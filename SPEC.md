@@ -104,7 +104,19 @@ them:
 - The first configured header with a present, non-empty value wins.
 - Preserve the extracted identifier and the header name it came from.
 - Do not use routing or affinity headers as session identifiers by default.
-- If no identifier is available, keep the request accessible as unassigned.
+- If no identifier is available, keep the request accessible as unassigned. Unassigned requests are not a session:
+  unrelated requests must not be aggregated into a pseudo-session or reconstructed as one conversation.
+
+Only conversation requests join sessions. Classify each captured exchange as either a **conversation** request or
+**auxiliary** traffic:
+
+- A conversation request carries model input: a non-empty `messages`, `input`, `prompt`, or `contents` field in its
+  request body, or a generation response with a non-empty `choices` or `output` field.
+- Everything else is auxiliary: model listings, presets, health checks, and similar metadata calls.
+
+Auxiliary traffic is still captured and inspectable, but it never joins a session, even when the client sent a session
+header. Its session identifier is not recorded, so it cannot appear to belong to a session it is not part of. This keeps
+the unassigned set limited to real generations that lack a session identifier.
 
 ## Usage and cost
 
@@ -228,11 +240,12 @@ Allow sorting and filtering. Paginate with 50, 100, or 200 rows per page. Provid
 6h, 12h, 1d, 2d, 1w, 1mo, and 1y.
 
 Search must cover the whole result set, not just the current page. Match session identifier, provider, and model.
-Provide quick filters for unassigned sessions, sessions with failures, sessions with incomplete captures, and a specific
-provider or model. Provider and model inputs should suggest known values. Show the number of active filters and offer a
+Provide quick filters for sessions with failures, sessions with incomplete captures, and a specific provider or model. Provider and model inputs should suggest known values. Show the number of active filters and offer a
 one-click reset, including from the empty state.
 
-Requests without a session identifier must be shown in an **Unassigned** group and remain inspectable.
+Conversation requests without a session identifier must remain inspectable through the Requests view's **Unassigned**
+filter, reachable directly from the top navigation. They are not listed as a session, because unrelated requests do not
+form a conversation and their combined totals would be meaningless. Auxiliary traffic is excluded from that filter.
 
 ### Requests view
 
@@ -249,14 +262,17 @@ Show:
 - Method and local path.
 - Request duration, derived from start and completion timestamps, sortable and filterable (for example, slow requests).
 - Token usage and cost, when available.
+- An auxiliary marker for non-generation traffic.
 
 Allow filtering and sorting, including sorting by freshly calculated cost. Use the same page sizes and rolling time
 windows as the Sessions view. Selecting a request opens the request inspector.
 
 Search must cover the whole result set, not just the current page. Match request ID, session identifier, provider,
 model, harness, method, path, and status. Provide quick filters for failed responses, incomplete captures, streaming
-responses, requests with tool calls, unassigned requests, slow requests, and a specific provider, model, or harness.
-Provider, model, and harness inputs should suggest known values.
+responses, requests with tool calls, unassigned conversation requests, auxiliary traffic, slow requests, and a specific
+provider, model, or harness. Provider, model, and harness inputs should suggest known values. The unassigned and
+auxiliary filters are disjoint: unassigned means a conversation request without a session, auxiliary means
+non-generation traffic.
 
 Assigned sessions must be reachable from the request row without losing the row's own click target.
 
@@ -278,6 +294,9 @@ Combine two synchronized representations:
   - A node records all requests in which the message appears.
 - Conversation reconstruction is available for recognized `openai_chat` payloads. Unknown formats remain inspectable
   through raw request/response payloads.
+- Only completed exchanges contribute to the conversation tree. A request that failed (for example a 401 or 404) or
+  whose response could not be parsed has no assistant message, so it must not add a dangling turn. Such requests remain
+  visible in the session's request list, timeline, and failed count.
 - Long message text, reasoning, tool arguments, and tool results may start compact, but every truncated block must offer
   a control to show the full content. Do not silently drop conversation material.
 
@@ -431,7 +450,8 @@ The application is useful when:
   retained as one raw fallback.
 - Full logical requests and final responses can be inspected.
 - Full header sets are not stored; only configured session/metadata headers are extracted.
-- Requests are grouped into sessions using ordered, configurable headers, with unassigned requests accessible.
+- Requests are grouped into sessions using ordered, configurable headers. Unassigned requests are reachable through the
+  Requests view and are never aggregated into a pseudo-session.
 - A session can be inspected through both a readable conversation tree and an HTTP request timeline, and individual
   requests can be browsed without session grouping.
 - Conversation elements can be traced to their source request and to all requests where they occur.

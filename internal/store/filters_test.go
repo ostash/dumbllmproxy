@@ -5,6 +5,8 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -23,18 +25,23 @@ func TestListRequestFilters(t *testing.T) {
 
 	records := []*store.RequestRecord{
 		{
-			SessionKey: "alpha", StartedAt: now, Method: "POST", LocalPath: "/openrouter/v1/chat/completions",
+			SessionKey: "alpha", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/openrouter/v1/chat/completions",
 			UpstreamURL: "https://example.com/a", Provider: "openrouter", Model: "model-a",
 			StatusCode: 200, Streamed: true, HasToolCalls: true,
 		},
 		{
-			SessionKey: "beta", StartedAt: now.Add(time.Second), Method: "POST", LocalPath: "/deepseek/chat/completions",
+			SessionKey: "beta", Conversation: true, StartedAt: now.Add(time.Second), Method: "POST", LocalPath: "/deepseek/chat/completions",
 			UpstreamURL: "https://example.com/b", Provider: "deepseek", Model: "model-b",
 			StatusCode: 500, Incomplete: true,
 		},
 		{
 			StartedAt: now.Add(2 * time.Second), Method: "GET", LocalPath: "/openrouter/api/v1/models",
 			UpstreamURL: "https://example.com/c", Provider: "openrouter", Model: "",
+			StatusCode: 200,
+		},
+		{
+			Conversation: true, StartedAt: now.Add(3 * time.Second), Method: "POST", LocalPath: "/openrouter/v1/chat/completions",
+			UpstreamURL: "https://example.com/d", Provider: "openrouter", Model: "model-c",
 			StatusCode: 200,
 		},
 	}
@@ -48,8 +55,8 @@ func TestListRequestFilters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total != 3 || len(all) != 3 {
-		t.Fatalf("expected 3 requests, got %d/%d", len(all), total)
+	if total != 4 || len(all) != 4 {
+		t.Fatalf("expected 4 requests, got %d/%d", len(all), total)
 	}
 
 	cases := []struct {
@@ -62,7 +69,9 @@ func TestListRequestFilters(t *testing.T) {
 		{"streamed", store.ListOptions{Streamed: boolPtr(true)}, 1},
 		{"tool calls", store.ListOptions{HasToolCalls: boolPtr(true)}, 1},
 		{"unassigned", store.ListOptions{Unassigned: boolPtr(true)}, 1},
-		{"provider", store.ListOptions{Provider: "openrouter"}, 2},
+		{"auxiliary", store.ListOptions{Conversation: boolPtr(false)}, 1},
+		{"conversation", store.ListOptions{Conversation: boolPtr(true)}, 3},
+		{"provider", store.ListOptions{Provider: "openrouter"}, 3},
 		{"model", store.ListOptions{Model: "model-b"}, 1},
 		{"query model", store.ListOptions{Query: "model-a"}, 1},
 		{"query path", store.ListOptions{Query: "/deepseek/"}, 1},
@@ -94,9 +103,9 @@ func TestListSessionFilters(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	for _, rec := range []*store.RequestRecord{
-		{SessionKey: "alpha", StartedAt: now, Method: "POST", LocalPath: "/a", UpstreamURL: "https://e/a", Provider: "openrouter", Model: "model-a", StatusCode: 200},
-		{SessionKey: "beta", StartedAt: now, Method: "POST", LocalPath: "/b", UpstreamURL: "https://e/b", Provider: "deepseek", Model: "model-b", StatusCode: 200},
-		{StartedAt: now, Method: "GET", LocalPath: "/c", UpstreamURL: "https://e/c", Provider: "openrouter", StatusCode: 200},
+		{SessionKey: "alpha", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/a", UpstreamURL: "https://e/a", Provider: "openrouter", Model: "model-a", StatusCode: 200},
+		{SessionKey: "beta", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/b", UpstreamURL: "https://e/b", Provider: "deepseek", Model: "model-b", StatusCode: 200},
+		{Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/c", UpstreamURL: "https://e/c", Provider: "openrouter", StatusCode: 200},
 	} {
 		if _, err := st.SaveRequest(ctx, rec); err != nil {
 			t.Fatal(err)
@@ -108,9 +117,8 @@ func TestListSessionFilters(t *testing.T) {
 		opts store.ListOptions
 		want int
 	}{
-		{"all", store.ListOptions{}, 3},
-		{"unassigned", store.ListOptions{Unassigned: boolPtr(true)}, 1},
-		{"provider", store.ListOptions{Provider: "openrouter"}, 2},
+		{"all", store.ListOptions{}, 2},
+		{"provider", store.ListOptions{Provider: "openrouter"}, 1},
 		{"model", store.ListOptions{Model: "model-b"}, 1},
 		{"query", store.ListOptions{Query: "alph"}, 1},
 	}
@@ -198,9 +206,9 @@ func TestSessionFailureCountsAndFilters(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	for _, rec := range []*store.RequestRecord{
-		{SessionKey: "bad", StartedAt: now, Method: "POST", LocalPath: "/a", UpstreamURL: "https://e/a", Provider: "p", StatusCode: 500},
-		{SessionKey: "bad", StartedAt: now, Method: "POST", LocalPath: "/b", UpstreamURL: "https://e/b", Provider: "p", StatusCode: 200, Incomplete: true},
-		{SessionKey: "good", StartedAt: now, Method: "POST", LocalPath: "/c", UpstreamURL: "https://e/c", Provider: "p", StatusCode: 200},
+		{SessionKey: "bad", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/a", UpstreamURL: "https://e/a", Provider: "p", StatusCode: 500},
+		{SessionKey: "bad", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/b", UpstreamURL: "https://e/b", Provider: "p", StatusCode: 200, Incomplete: true},
+		{SessionKey: "good", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/c", UpstreamURL: "https://e/c", Provider: "p", StatusCode: 200},
 	} {
 		if _, err := st.SaveRequest(ctx, rec); err != nil {
 			t.Fatal(err)
@@ -289,7 +297,7 @@ func TestSessionProvidersAreSorted(t *testing.T) {
 	now := time.Now().UTC()
 	for _, provider := range []string{"zeta", "alpha", "middle"} {
 		if _, err := st.SaveRequest(ctx, &store.RequestRecord{
-			SessionKey: "s", StartedAt: now, Method: "POST", LocalPath: "/x",
+			SessionKey: "s", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/x",
 			UpstreamURL: "https://e/x", Provider: provider, StatusCode: 200,
 		}); err != nil {
 			t.Fatal(err)
@@ -310,5 +318,78 @@ func TestSessionProvidersAreSorted(t *testing.T) {
 		if sessions[0].Providers[i] != value {
 			t.Fatalf("providers not sorted: %#v", sessions[0].Providers)
 		}
+	}
+}
+
+func TestAuxiliaryRequestsAreNotSessioned(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// A conversation request with a session header joins the session.
+	if _, err := st.SaveRequest(ctx, &store.RequestRecord{
+		SessionKey: "s", SessionHeader: "X-Session-Id", Conversation: true,
+		StartedAt: now, Method: "POST", LocalPath: "/v1/chat/completions",
+		UpstreamURL: "https://e/v1/chat/completions", Provider: "p", StatusCode: 200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Auxiliary traffic with the same header must not join it.
+	if _, err := st.SaveRequest(ctx, &store.RequestRecord{
+		SessionKey: "s", SessionHeader: "X-Session-Id", Conversation: false,
+		StartedAt: now, Method: "GET", LocalPath: "/api/v1/models",
+		UpstreamURL: "https://e/api/v1/models", Provider: "p", StatusCode: 200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Auxiliary traffic without a header must not create the unassigned group.
+	if _, err := st.SaveRequest(ctx, &store.RequestRecord{
+		Conversation: false, StartedAt: now, Method: "GET", LocalPath: "/api/v1/presets",
+		UpstreamURL: "https://e/api/v1/presets", Provider: "p", StatusCode: 200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := st.ListSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected one session, got %#v", sessions)
+	}
+	if sessions[0].SessionKey != "s" || sessions[0].RequestCount != 1 {
+		t.Fatalf("unexpected session: %#v", sessions[0])
+	}
+
+	all, err := st.ListAllRequests(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("expected three captured requests, got %d", len(all))
+	}
+	for _, req := range all {
+		if req.Method == "GET" && (req.SessionID != nil || req.SessionKey != "") {
+			t.Fatalf("auxiliary request joined a session: %#v", req)
+		}
+	}
+
+	aux := false
+	auxiliary, total, err := st.ListAllRequestsFiltered(ctx, store.ListOptions{Conversation: &aux, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(auxiliary) != 2 {
+		t.Fatalf("expected two auxiliary requests, got %d/%d", len(auxiliary), total)
+	}
+
+	// There is no unassigned pseudo-session: unassigned requests are only
+	// reachable through the request list.
+	if _, err := st.GetSession(ctx, 0); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected no unassigned session, got %v", err)
 	}
 }

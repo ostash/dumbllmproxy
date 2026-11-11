@@ -19,7 +19,6 @@ export type SessionSummary = {
   cost_reported_requests: number;
   failed_requests: number;
   incomplete_requests: number;
-  unassigned: boolean;
 };
 
 export type Facets = {
@@ -45,6 +44,7 @@ export type RequestSummary = {
   streamed: boolean;
   incomplete: boolean;
   has_tool_calls: boolean;
+  is_conversation: boolean;
   parser: string;
   parse_error?: string;
   input_tokens?: number;

@@ -308,7 +308,8 @@ func TestProxyUnknownStreamStoresRawFallback(t *testing.T) {
 	defer upstream.Close()
 
 	st, proxySrv := newTestProxy(t, upstream.URL, "none", "none")
-	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/custom", strings.NewReader(`{"model":"m"}`))
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/custom",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set("X-Session-Id", "raw-session")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -346,7 +347,8 @@ func TestProxyCompressedResponsePassThroughAndDecodedStorage(t *testing.T) {
 
 	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
 	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
-	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", strings.NewReader(`{"model":"m"}`))
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set("X-Session-Id", "gzip-session")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -379,7 +381,8 @@ func TestProxyUnassignedRequest(t *testing.T) {
 	defer upstream.Close()
 
 	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
-	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", strings.NewReader(`{"model":"m"}`))
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -387,9 +390,63 @@ func TestProxyUnassignedRequest(t *testing.T) {
 	io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	reqs := waitForRequests(t, st, 0)
+	unassigned := true
+	deadline := time.Now().Add(3 * time.Second)
+	var reqs []store.RequestSummary
+	for time.Now().Before(deadline) {
+		reqs, _, err = st.ListAllRequestsFiltered(context.Background(),
+			store.ListOptions{Unassigned: &unassigned, Limit: 10})
+		if err == nil && len(reqs) > 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	if len(reqs) != 1 {
 		t.Fatalf("expected unassigned request, got %d", len(reqs))
+	}
+}
+
+func TestProxyAuxiliaryRequestNeverJoinsSession(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"data":[{"id":"model-a"}]}`)
+	}))
+	defer upstream.Close()
+
+	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	req, _ := http.NewRequest(http.MethodGet, proxySrv.URL+"/open/api/v1/models", nil)
+	req.Header.Set("X-Session-Id", "session-1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	var reqs []store.RequestSummary
+	for time.Now().Before(deadline) {
+		reqs, err = st.ListAllRequests(context.Background())
+		if err == nil && len(reqs) > 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(reqs) != 1 {
+		t.Fatalf("expected one captured request, got %d", len(reqs))
+	}
+	if reqs[0].Conversation {
+		t.Fatal("model listing must not be classified as a conversation")
+	}
+	if reqs[0].SessionID != nil || reqs[0].SessionKey != "" {
+		t.Fatalf("auxiliary request joined a session: id=%v key=%q", reqs[0].SessionID, reqs[0].SessionKey)
+	}
+	sessions, err := st.ListSessions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("auxiliary request created a session: %#v", sessions)
 	}
 }
 
@@ -484,7 +541,8 @@ func TestProxySessionHeaderFallbackOrder(t *testing.T) {
 	defer upstream.Close()
 
 	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
-	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", strings.NewReader(`{"model":"m"}`))
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set("X-Conversation-Id", "conv-fallback")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -561,7 +619,8 @@ func TestProxyPersistsOnlyAllowlistedHeaders(t *testing.T) {
 	defer upstream.Close()
 
 	st, proxySrv := newTestProxy(t, upstream.URL, "none", "none")
-	req, _ := http.NewRequest(http.MethodGet, proxySrv.URL+"/open/models", nil)
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set("X-Session-Id", "sess-allowlist")
 	req.Header.Set("X-Harness-Id", "harness-allowlist")
 	req.Header.Set("X-Unconfigured", "leak-request")

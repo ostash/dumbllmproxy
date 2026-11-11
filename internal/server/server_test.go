@@ -51,6 +51,7 @@ func TestAPIAndStatic(t *testing.T) {
 	id, err := st.SaveRequest(context.Background(), &store.RequestRecord{
 		SessionKey:    "session-a",
 		SessionHeader: "X-Session-Id",
+		Conversation:  true,
 		StartedAt:     started,
 		CompletedAt:   &completed,
 		Method:        "POST",
@@ -172,21 +173,36 @@ func TestAPIAndStatic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	detailBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
 	var reqDetail struct {
 		store.RequestDetail
 		Conversation struct {
 			Roots []json.RawMessage `json:"roots"`
 		} `json:"conversation"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&reqDetail); err != nil {
+	if err := json.Unmarshal(detailBody, &reqDetail); err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
 	if reqDetail.RequestBody != reqBody || reqDetail.ResponseBody != respBody {
 		t.Fatalf("unexpected request detail: %#v", reqDetail)
 	}
 	if len(reqDetail.Conversation.Roots) == 0 {
 		t.Fatal("expected request conversation roots")
+	}
+	// The conversation kind and the conversation tree must not share a JSON key.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(detailBody, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if string(raw["is_conversation"]) != "true" {
+		t.Fatalf("expected is_conversation=true, got %s", raw["is_conversation"])
+	}
+	if len(raw["conversation"]) == 0 || raw["conversation"][0] != '{' {
+		t.Fatalf("expected conversation tree object, got %s", raw["conversation"])
 	}
 
 	resp, err = http.Get(ts.URL + "/api/nope")

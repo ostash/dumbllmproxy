@@ -45,11 +45,20 @@ type builder struct {
 // Build reconstructs a conversation tree from captured requests. Only requests
 // using the openai_chat parser participate; unknown formats remain available in
 // the request inspector.
+//
+// Only completed exchanges contribute. A request that failed (for example a
+// 401 or 404) or whose response could not be parsed has no assistant message,
+// so adding its prompt would leave a dangling turn that never happened. Such
+// requests stay visible in the session's request list and timeline.
 func Build(requests []store.RequestForTree) Tree {
 	b := &builder{}
 	root := &Node{}
 	for _, req := range requests {
 		if req.Parser != "openai_chat" {
+			continue
+		}
+		response, ok := openai.ExtractResponseMessage(req.ResponseBody)
+		if !ok {
 			continue
 		}
 		current := root
@@ -59,10 +68,8 @@ func Build(requests []store.RequestForTree) Tree {
 				addRequestID(current, req.ID)
 			}
 		}
-		if msg, ok := openai.ExtractResponseMessage(req.ResponseBody); ok {
-			node := b.findOrCreate(current, msg, req.ID)
-			addRequestID(node, req.ID)
-		}
+		node := b.findOrCreate(current, response, req.ID)
+		addRequestID(node, req.ID)
 	}
 	return Tree{Roots: b.roots}
 }

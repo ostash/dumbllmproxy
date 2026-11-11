@@ -45,17 +45,18 @@ func deepSeekResolver(t *testing.T, hit, miss, output float64) store.CostResolve
 func saveDeepSeekRequest(t *testing.T, st *store.Store, sessionKey string, startedAt time.Time) int64 {
 	t.Helper()
 	id, err := st.SaveRequest(context.Background(), &store.RequestRecord{
-		SessionKey:  sessionKey,
-		StartedAt:   startedAt,
-		Method:      "POST",
-		LocalPath:   "/deepseek/chat/completions",
-		UpstreamURL: "https://api.deepseek.com/chat/completions",
-		Provider:    "deepseek",
-		Model:       "deepseek-chat",
-		Pricing:     "deepseek",
-		StatusCode:  200,
-		Parser:      "openai_chat",
-		UsageJSON:   deepSeekUsageJSON,
+		SessionKey:   sessionKey,
+		Conversation: true,
+		StartedAt:    startedAt,
+		Method:       "POST",
+		LocalPath:    "/deepseek/chat/completions",
+		UpstreamURL:  "https://api.deepseek.com/chat/completions",
+		Provider:     "deepseek",
+		Model:        "deepseek-chat",
+		Pricing:      "deepseek",
+		StatusCode:   200,
+		Parser:       "openai_chat",
+		UsageJSON:    deepSeekUsageJSON,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -137,15 +138,16 @@ func TestSessionCostSumsResolvedAmounts(t *testing.T) {
 	now := time.Now().UTC()
 	for i, model := range []string{"usd-model", "eur-model"} {
 		if _, err := st.SaveRequest(ctx, &store.RequestRecord{
-			SessionKey:  "mixed",
-			StartedAt:   now.Add(time.Duration(i) * time.Second),
-			Method:      "POST",
-			LocalPath:   "/x",
-			UpstreamURL: "https://example.com/x",
-			Provider:    "p",
-			Model:       model,
-			Pricing:     "stub",
-			StatusCode:  200,
+			SessionKey:   "mixed",
+			Conversation: true,
+			StartedAt:    now.Add(time.Duration(i) * time.Second),
+			Method:       "POST",
+			LocalPath:    "/x",
+			UpstreamURL:  "https://example.com/x",
+			Provider:     "p",
+			Model:        model,
+			Pricing:      "stub",
+			StatusCode:   200,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -185,15 +187,16 @@ func TestRequestCostSortingUsesFreshCosts(t *testing.T) {
 	now := time.Now().UTC()
 	for i, model := range []string{"a", "b"} {
 		if _, err := st.SaveRequest(ctx, &store.RequestRecord{
-			SessionKey:  "sort",
-			StartedAt:   now.Add(time.Duration(i) * time.Second),
-			Method:      "POST",
-			LocalPath:   "/x",
-			UpstreamURL: "https://example.com/x",
-			Provider:    "p",
-			Model:       model,
-			Pricing:     "stub",
-			StatusCode:  200,
+			SessionKey:   "sort",
+			Conversation: true,
+			StartedAt:    now.Add(time.Duration(i) * time.Second),
+			Method:       "POST",
+			LocalPath:    "/x",
+			UpstreamURL:  "https://example.com/x",
+			Provider:     "p",
+			Model:        model,
+			Pricing:      "stub",
+			StatusCode:   200,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -233,7 +236,7 @@ func TestSessionLastActivityUsesChronologicalOrder(t *testing.T) {
 	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	for _, started := range []time.Time{base, base.Add(500 * time.Millisecond)} {
 		if _, err := st.SaveRequest(ctx, &store.RequestRecord{
-			SessionKey: "s", StartedAt: started, Method: "POST", LocalPath: "/x",
+			SessionKey: "s", Conversation: true, StartedAt: started, Method: "POST", LocalPath: "/x",
 			UpstreamURL: "https://example.com/x", Provider: "p", StatusCode: 200,
 		}); err != nil {
 			t.Fatal(err)
@@ -263,7 +266,7 @@ func TestSinceFilterUsesChronologicalOrder(t *testing.T) {
 	ctx := context.Background()
 	started := time.Date(2025, 1, 1, 0, 0, 0, 123_456_789, time.UTC)
 	if _, err := st.SaveRequest(ctx, &store.RequestRecord{
-		SessionKey: "s", StartedAt: started, Method: "POST", LocalPath: "/x",
+		SessionKey: "s", Conversation: true, StartedAt: started, Method: "POST", LocalPath: "/x",
 		UpstreamURL: "https://example.com/x", Provider: "p", StatusCode: 200,
 	}); err != nil {
 		t.Fatal(err)

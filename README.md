@@ -17,8 +17,9 @@ local web UI for inspecting conversations and HTTP exchanges.
 - Paginated Sessions and Requests lists (50/100/200 rows) with rolling time filters from the last hour through the last
   year.
 - Server-side search across the whole result set, plus quick filters for failed responses, incomplete captures,
-  streaming, tool calls, unassigned requests, slow requests, and a specific provider, model, or harness. Provider/model/
-  harness inputs suggest known values. Active filters can be cleared in one click.
+  streaming, tool calls, unassigned conversation requests, auxiliary traffic, slow requests, and a specific provider,
+  model, or harness. Unassigned and auxiliary are disjoint. Provider/model/harness inputs suggest known values. Active
+  filters can be cleared in one click.
 - Pagination with first/last and a direct page jump.
 - Sortable request duration and a "slow requests" filter.
 - Session-level failed/incomplete counts and filters.
@@ -36,7 +37,8 @@ local web UI for inspecting conversations and HTTP exchanges.
   truncated.
 - Session totals show no value when no request reported usage or cost, and are marked partial when only some requests
   did.
-- Conversation tree + HTTP request timeline, synchronized by request ID.
+- Conversation tree + HTTP request timeline, synchronized by request ID. Failed or unparseable requests stay in the
+  session's request list and timeline but do not add dangling turns to the reconstructed conversation.
 - Requests link to their session without losing the row click.
 - Raw request/response body inspection, parsed JSON, usage and cost breakdown, including input, cached, non-cached,
   generated and reasoning tokens when reported.
@@ -158,7 +160,8 @@ session_headers:
 ```
 
 The first present non-empty header wins. The identifier and header name are stored. Requests without a session header
-appear under **Unassigned**.
+are not a session: they are reachable through the **Unassigned** filter in the Requests view (also linked from the top
+navigation), because unrelated requests do not form a conversation.
 
 ## Provider fields used
 

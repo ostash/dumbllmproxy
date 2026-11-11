@@ -124,3 +124,32 @@ func TestBuildTreeMergesEmptyAndNullAssistantContent(t *testing.T) {
 		t.Fatalf("unexpected assistant children: %#v", assistantNode.Children)
 	}
 }
+
+func TestBuildTreeSkipsFailedRequests(t *testing.T) {
+	system := map[string]any{"role": "system", "content": "sys"}
+	user1 := map[string]any{"role": "user", "content": "one"}
+	assistant1 := map[string]any{"role": "assistant", "content": "hi"}
+	user2 := map[string]any{"role": "user", "content": "two"}
+
+	failed := req(2, []map[string]any{system, user1, assistant1, user2}, nil)
+	failed.ResponseBody = []byte(`{"error":{"message":"Missing Authentication header","code":401}}`)
+
+	tree := Build([]store.RequestForTree{
+		req(1, []map[string]any{system, user1}, assistant1),
+		failed,
+	})
+
+	if len(tree.Roots) != 1 {
+		t.Fatalf("expected one root, got %d", len(tree.Roots))
+	}
+	assistant := tree.Roots[0].Children[0].Children[0]
+	if assistant.Role != "assistant" || assistant.Content != "hi" {
+		t.Fatalf("unexpected assistant node: %#v", assistant)
+	}
+	if len(assistant.Children) != 0 {
+		t.Fatalf("failed request must not add a dangling turn: %#v", assistant.Children)
+	}
+	if len(assistant.RequestIDs) != 1 || assistant.RequestIDs[0] != 1 {
+		t.Fatalf("failed request must not be recorded as an occurrence: %#v", assistant.RequestIDs)
+	}
+}

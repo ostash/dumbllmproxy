@@ -48,7 +48,6 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
   const [page, setPage] = useState(() => intParam(initialParams, "page", 0));
   const [pageSize, setPageSize] = useState<PageSize>(() => pageSizeParam(initialParams));
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(() => timeWindowParam(initialParams));
-  const [unassigned, setUnassigned] = useState(() => boolParam(initialParams, "unassigned"));
   const [failed, setFailed] = useState(() => boolParam(initialParams, "has_failures"));
   const [incomplete, setIncomplete] = useState(() => boolParam(initialParams, "has_incomplete"));
   const [provider, setProvider] = useState(() => stringParam(initialParams, "provider"));
@@ -85,7 +84,6 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
         sort: sortKey,
         order: sortDir,
         q: debouncedFilter.trim() || undefined,
-        unassigned: unassigned || undefined,
         has_failures: failed || undefined,
         has_incomplete: incomplete || undefined,
         provider: debouncedProvider.trim() || undefined,
@@ -109,7 +107,7 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
     };
   }, [
     refreshKey, reloadKey, page, pageSize, since, sortKey, sortDir,
-    debouncedFilter, unassigned, failed, incomplete, debouncedProvider, debouncedModel
+    debouncedFilter, failed, incomplete, debouncedProvider, debouncedModel
   ]);
 
   useEffect(() => {
@@ -126,7 +124,6 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
     if (sortKey !== "last_activity") params.set("sort", sortKey);
     if (sortDir !== "desc") params.set("order", sortDir);
     if (filter.trim()) params.set("q", filter.trim());
-    if (unassigned) params.set("unassigned", "1");
     if (failed) params.set("has_failures", "1");
     if (incomplete) params.set("has_incomplete", "1");
     if (provider.trim()) params.set("provider", provider.trim());
@@ -137,7 +134,7 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
     onListHash(hash);
   }, [
     page, pageSize, timeWindow, sortKey, sortDir, filter,
-    unassigned, failed, incomplete, provider, model, onListHash
+    failed, incomplete, provider, model, onListHash
   ]);
 
   function toggleSort(key: SortKey) {
@@ -162,12 +159,11 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
 
   const arrow = (key: SortKey) => (sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
   const activeFilterCount = [
-    filter.trim(), unassigned, failed, incomplete, provider.trim(), model.trim()
+    filter.trim(), failed, incomplete, provider.trim(), model.trim()
   ].filter(Boolean).length;
 
   function clearFilters() {
     setFilter("");
-    setUnassigned(false);
     setFailed(false);
     setIncomplete(false);
     setProvider("");
@@ -206,16 +202,6 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
       </div>
 
       <div className="quick-filters">
-        <button
-          className={`filter-chip ${unassigned ? "active" : ""}`}
-          aria-pressed={unassigned}
-          onClick={() => {
-            setUnassigned((v) => !v);
-            setPage(0);
-          }}
-        >
-          Unassigned
-        </button>
         <button
           className={`filter-chip ${failed ? "active" : ""}`}
           aria-pressed={failed}
@@ -298,7 +284,7 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
               <tbody>
                 {sessions.map((s) => (
                   <tr
-                    key={s.unassigned ? "unassigned" : s.id}
+                    key={s.id}
                     className="clickable-row"
                     tabIndex={0}
                     role="link"
@@ -312,7 +298,6 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
                   >
                     <td>
                       <div className="session-key">{s.session_key}</div>
-                      {s.unassigned && <span className="chip muted-chip">unassigned</span>}
                       {s.failed_requests > 0 && <span className="chip warn">{s.failed_requests} failed</span>}
                       {s.incomplete_requests > 0 && <span className="chip warn">{s.incomplete_requests} incomplete</span>}
                     </td>

@@ -14,6 +14,7 @@ export type ListParams = {
   incomplete?: boolean;
   streamed?: boolean;
   tool_calls?: boolean;
+  conversation?: boolean;
   unassigned?: boolean;
   provider?: string;
   model?: string;
@@ -56,6 +57,7 @@ function withQuery(url: string, params: ListParams): string {
   if (params.incomplete) search.set("incomplete", "1");
   if (params.streamed) search.set("streamed", "1");
   if (params.tool_calls) search.set("tool_calls", "1");
+  if (params.conversation !== undefined) search.set("conversation", params.conversation ? "1" : "0");
   if (params.unassigned) search.set("unassigned", "1");
   if (params.provider) search.set("provider", params.provider);
   if (params.model) search.set("model", params.model);
