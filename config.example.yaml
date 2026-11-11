@@ -1,0 +1,136 @@
+# dumbllmproxy example configuration.
+# Copy to config.yaml and pass with: dumbllmproxy -config config.yaml
+
+proxy:
+  listen: 127.0.0.1:8080
+  database: ./dumbllmproxy.db
+
+# Requests are routed by longest matching path prefix.
+# /openrouter/v1/chat/completions -> https://openrouter.ai/api/v1/chat/completions
+upstreams:
+  - name: openrouter
+    prefix: /openrouter
+    base_url: https://openrouter.ai/api
+    parser: openai_chat     # openai_chat or none
+    pricing: openrouter     # openrouter, deepseek, or none
+
+  # /deepseek/chat/completions -> https://api.deepseek.com/chat/completions
+  - name: deepseek
+    prefix: /deepseek
+    base_url: https://api.deepseek.com
+    parser: openai_chat
+    pricing: deepseek
+
+  # Unknown providers still work as transparent proxies. Their requests and raw
+  # responses remain inspectable in the UI.
+  # - name: custom
+  #   prefix: /custom
+  #   base_url: https://llm.example.com
+  #   parser: none
+  #   pricing: none
+
+# First present header wins. The identifier and the header it came from are
+# stored with the request.
+session_headers:
+  - x-session-id
+  - x-conversation-id
+  - x-claude-code-session-id
+
+# These headers are copied into request metadata for inspection. Full headers
+# are intentionally not stored.
+metadata_headers:
+  - x-harness-id
+  - x-openrouter-title
+  - user-agent
+
+pricing:
+  # OpenRouter uses the provider-reported usage.cost field. No pricing table is
+  # needed for it.
+
+  # Calculated costs are recomputed on every read from the captured request
+  # facts, so editing these rates and restarting corrects previously captured
+  # request and session totals without any migration or replay.
+  #
+  # DeepSeek rates are expressed per 1M tokens. Costs are reported in USD.
+  # The rates below are placeholders (0.00); fill in the real values.
+  # Rates are evaluated in configuration order: the first matching rate wins.
+  # Put more specific rates (peak, holiday, date overrides) before defaults.
+  # `from` is inclusive; `to` is inclusive and optional. Omit `to` for the
+  # current period.
+  deepseek:
+    unit: per_million_tokens
+    schedule_timezone: UTC
+    holiday_timezone: Asia/Shanghai
+    # Holidays used by the `holiday: true/false` rate condition.
+    holidays:
+      - "2025-01-01"
+    models:
+      deepseek-chat:
+        rates:
+          - name: peak-2025-h1
+            conditions: &deepseek_peak_2025_h1
+              from: "2025-01-01"
+              to: "2025-06-30"
+              days: [Mon, Tue, Wed, Thu, Fri]
+              time_windows: &deepseek_peak_windows
+                - start: "01:00"
+                  end: "04:00"
+                - start: "06:00"
+                  end: "10:00"
+              holiday: false
+            input_cache_hit: 0.00
+            input_cache_miss: 0.00
+            output: 0.00
+
+          - name: default-2025-h1
+            conditions: &deepseek_default_2025_h1
+              from: "2025-01-01"
+              to: "2025-06-30"
+            input_cache_hit: 0.00
+            input_cache_miss: 0.00
+            output: 0.00
+
+          - name: peak-current
+            conditions: &deepseek_peak_current
+              from: "2025-07-01"
+              days: [Mon, Tue, Wed, Thu, Fri]
+              time_windows: *deepseek_peak_windows
+              holiday: false
+              # dates: ["2025-01-01"]          # optional explicit dates
+              # exclude_dates: ["2025-01-02"]  # optional exclusions
+            input_cache_hit: 0.00
+            input_cache_miss: 0.00
+            output: 0.00
+
+          - name: default-current
+            conditions: &deepseek_default_current
+              from: "2025-07-01"
+            input_cache_hit: 0.00
+            input_cache_miss: 0.00
+            output: 0.00
+
+      deepseek-reasoner:
+        rates:
+          - name: peak-2025-h1
+            conditions: *deepseek_peak_2025_h1
+            input_cache_hit: 0.00
+            input_cache_miss: 0.00
+            output: 0.00
+
+          - name: default-2025-h1
+            conditions: *deepseek_default_2025_h1
+            input_cache_hit: 0.00
+            input_cache_miss: 0.00
+            output: 0.00
+
+          - name: peak-current
+            conditions: *deepseek_peak_current
+            input_cache_hit: 0.00
+            input_cache_miss: 0.00
+            output: 0.00
+
+          - name: default-current
+            conditions: *deepseek_default_current
+            input_cache_hit: 0.00
+            input_cache_miss: 0.00
+            output: 0.00
