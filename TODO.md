@@ -2,19 +2,13 @@
 
 ## Storage
 
-The database grows fast: 297 requests already take 104 MB, of which 83 MB is request bodies and 21 MB is response
-bodies. Every request stores the full message history, so a long conversation grows roughly quadratically.
+The database still grows roughly quadratically because every request stores the full message history:
 
-- Compress stored request and response bodies (zlib/gzip) with a per-row encoding flag. JSON with repeated system
-  prompts and tool definitions compresses well; this is the cheapest large win.
 - Store only the messages a request adds, plus a reference to the request it extends, and reconstruct the full body on
   read. This turns quadratic history storage into linear unique-message storage. Bigger change, and it conflicts with
   storing the raw body verbatim, so decide whether a raw copy is still needed.
-- Add retention: drop request and response bodies older than a configurable age while keeping metadata, usage and cost
-  facts.
 - Do not store bodies for auxiliary requests (model listings, presets), or truncate them. They are rarely useful and add
   noise.
-- Enable `auto_vacuum` or run periodic `VACUUM` and WAL checkpoints to reclaim space after pruning.
 
 ## Performance
 
@@ -27,6 +21,13 @@ bodies. Every request stores the full message history, so a long conversation gr
 - Replace the linear child scan in `conversation.findOrCreate` (`internal/conversation/tree.go`) with a hash-keyed map.
   It is O(n²) in the number of messages per parent.
 - Cache or index `Facets` instead of running `SELECT DISTINCT` on every call.
+
+## API and UI
+
+- Serve request and response bodies from a dedicated endpoint and load them lazily in the inspector instead of embedding
+  them in the detail response.
+- When the browser advertises `zstd` in `Accept-Encoding`, pass the stored compressed blob through with
+  `Content-Encoding: zstd` instead of decompressing and re-encoding it. Fall back to server-side decompression.
 
 ## Conversation and session UI
 

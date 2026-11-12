@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/andybalholm/brotli v1.2.8
+	github.com/klauspost/compress v1.20.4
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.62.0
 )

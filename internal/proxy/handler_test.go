@@ -24,6 +24,8 @@ import (
 	"dumbllmproxy/internal/pricing"
 	"dumbllmproxy/internal/proxy"
 	"dumbllmproxy/internal/store"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 func newTestProxy(t *testing.T, baseURL, parser, pricingName string) (*store.Store, *httptest.Server) {
@@ -664,5 +666,116 @@ func TestProxyPersistsOnlyAllowlistedHeaders(t *testing.T) {
 		if strings.Contains(detail.MetadataJSON, leak) {
 			t.Fatalf("non-allowlisted value %q persisted: %s", leak, detail.MetadataJSON)
 		}
+	}
+}
+
+func TestProxyZstdWireEncoding(t *testing.T) {
+	const requestJSON = `{"model":"m","messages":[{"role":"user","content":"hi"}]}`
+	const responseJSON = `{"id":"c1","object":"chat.completion","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
+
+	compress := func(s string) []byte {
+		var buf bytes.Buffer
+		w, err := zstd.NewWriter(&buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(s)); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes()
+	}
+	requestCompressed := compress(requestJSON)
+	responseCompressed := compress(responseJSON)
+
+	var gotRequestBody []byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRequestBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Encoding", "zstd")
+		_, _ = w.Write(responseCompressed)
+	}))
+	defer upstream.Close()
+
+	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", bytes.NewReader(requestCompressed))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "zstd")
+	req.Header.Set("X-Session-Id", "zstd-session")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if !bytes.Equal(gotRequestBody, requestCompressed) {
+		t.Fatalf("compressed request bytes were changed in transit")
+	}
+	if resp.Header.Get("Content-Encoding") != "zstd" {
+		t.Fatalf("response content encoding not preserved: %q", resp.Header.Get("Content-Encoding"))
+	}
+	if !bytes.Equal(raw, responseCompressed) {
+		t.Fatalf("compressed response bytes were changed in transit")
+	}
+
+	reqs := waitForRequests(t, st, waitForSessionID(t, st))
+	detail, err := st.GetRequest(context.Background(), reqs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.RequestBody != requestJSON {
+		t.Fatalf("stored request body was not decoded: %q", detail.RequestBody)
+	}
+	if detail.ResponseBody != responseJSON {
+		t.Fatalf("stored response body was not decoded: %q", detail.ResponseBody)
+	}
+}
+
+func TestProxyMultipleContentEncodingHeaders(t *testing.T) {
+	const requestJSON = `{"model":"m","messages":[{"role":"user","content":"hi"}]}`
+
+	var gzipped bytes.Buffer
+	gw := gzip.NewWriter(&gzipped)
+	_, _ = gw.Write([]byte(requestJSON))
+	_ = gw.Close()
+	var nested bytes.Buffer
+	zw, err := zstd.NewWriter(&nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = zw.Write(gzipped.Bytes())
+	_ = zw.Close()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"model":"m","choices":[],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", bytes.NewReader(nested.Bytes()))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("Content-Encoding", "gzip")
+	req.Header.Add("Content-Encoding", "zstd")
+	req.Header.Set("X-Session-Id", "multi-encoding")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	reqs := waitForRequests(t, st, waitForSessionID(t, st))
+	detail, err := st.GetRequest(context.Background(), reqs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.RequestBody != requestJSON {
+		t.Fatalf("nested request body was not decoded: %q", detail.RequestBody)
 	}
 }

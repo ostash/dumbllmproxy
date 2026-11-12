@@ -60,7 +60,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = r.Body.Close()
 
-	decodedRequestBody, reqDecodeErr := capture.Decode(rawRequestBody, r.Header.Get("Content-Encoding"))
+	decodedRequestBody, reqDecodeErr := capture.Decode(rawRequestBody, contentEncoding(r.Header))
 	storedRequestBody := decodedRequestBody
 	if reqDecodeErr != nil {
 		storedRequestBody = rawRequestBody
@@ -134,7 +134,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		now := time.Now().UTC()
 		completedAt = &now
 
-		decodedStream, decodeErr := capture.Decode(rawStream.Bytes(), resp.Header.Get("Content-Encoding"))
+		decodedStream, decodeErr := capture.Decode(rawStream.Bytes(), contentEncoding(resp.Header))
 		if decodeErr != nil {
 			responseBody = rawStream.Bytes()
 			rawResponseBody = rawStream.Bytes()
@@ -174,7 +174,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			incomplete = true
 			streamParseError = "response read: " + readErr.Error()
 		}
-		decoded, decodeErr := capture.Decode(raw, resp.Header.Get("Content-Encoding"))
+		decoded, decodeErr := capture.Decode(raw, contentEncoding(resp.Header))
 		responseBody = decoded
 		if decodeErr != nil {
 			responseBody = raw
@@ -283,6 +283,12 @@ func (h *Handler) session(header http.Header) (string, string) {
 		}
 	}
 	return "", ""
+}
+
+// contentEncoding joins repeated Content-Encoding headers so nested encodings
+// declared on separate header lines are decoded in the right order.
+func contentEncoding(header http.Header) string {
+	return strings.Join(header.Values("Content-Encoding"), ",")
 }
 
 func (h *Handler) save(rec *store.RequestRecord) {

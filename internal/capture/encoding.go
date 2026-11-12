@@ -13,11 +13,15 @@ import (
 	"strings"
 
 	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 // Decode decodes a complete body according to its Content-Encoding header.
 // Unknown or empty encodings are returned unchanged.
 func Decode(data []byte, contentEncoding string) ([]byte, error) {
+	if len(data) == 0 {
+		return data, nil
+	}
 	encodings := splitEncodings(contentEncoding)
 	for i := len(encodings) - 1; i >= 0; i-- {
 		switch encodings[i] {
@@ -47,6 +51,17 @@ func Decode(data []byte, contentEncoding string) ([]byte, error) {
 			out, err := io.ReadAll(brotli.NewReader(bytes.NewReader(data)))
 			if err != nil {
 				return nil, fmt.Errorf("brotli: %w", err)
+			}
+			data = out
+		case "zstd":
+			r, err := zstd.NewReader(bytes.NewReader(data))
+			if err != nil {
+				return nil, fmt.Errorf("zstd: %w", err)
+			}
+			out, err := io.ReadAll(r)
+			r.Close()
+			if err != nil {
+				return nil, fmt.Errorf("zstd: %w", err)
 			}
 			data = out
 		default:
@@ -108,6 +123,14 @@ func Decoder(r io.Reader, contentEncoding string) (io.ReadCloser, error) {
 			rc = &multiCloser{Reader: zr, closers: []io.Closer{zr, rc}}
 		case "br":
 			rc = &multiCloser{Reader: brotli.NewReader(rc), closers: []io.Closer{rc}}
+		case "zstd":
+			zr, err := zstd.NewReader(rc)
+			if err != nil {
+				_ = rc.Close()
+				return nil, fmt.Errorf("zstd: %w", err)
+			}
+			zrc := zr.IOReadCloser()
+			rc = &multiCloser{Reader: zrc, closers: []io.Closer{zrc, rc}}
 		default:
 			// Unknown encoding: expose the bytes as-is.
 			return rc, nil

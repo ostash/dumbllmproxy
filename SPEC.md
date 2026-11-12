@@ -356,7 +356,10 @@ Store:
 
 Do not persist calculated costs, cost explanations, or pricing snapshots; they are derived at read time.
 
-Keep decoded raw payloads intact. Avoid unnecessary duplication:
+Store decoded payloads. They may be minified and compressed, but must be restored to the same logical payload on read.
+Compression is detected from the stored bytes, so rows written before compression remain readable.
+
+Avoid unnecessary duplication:
 
 - Store each request/response payload once.
 - Store timestamps in a fixed-width UTC format so they sort chronologically as text.

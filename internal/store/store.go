@@ -288,6 +288,10 @@ func (s *Store) SaveRequest(ctx context.Context, rec *RequestRecord) (int64, err
 		sessionID = &id
 	}
 
+	requestBody := encodeBody(rec.RequestBody)
+	responseBody := encodeBody(rec.ResponseBody)
+	rawResponseBody := encodeBody(rec.RawResponseBody)
+
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO requests (
 			session_id, session_key, session_header, started_at, completed_at,
@@ -303,7 +307,7 @@ func (s *Store) SaveRequest(ctx context.Context, rec *RequestRecord) (int64, err
 		formatTime(rec.StartedAt), nullTime(rec.CompletedAt),
 		rec.Method, rec.LocalPath, rec.UpstreamURL, rec.Provider, nullString(rec.Model), rec.StatusCode,
 		nullString(rec.RequestContentType), nullString(rec.ResponseContentType), nullString(rec.MetadataJSON),
-		rec.RequestBody, rec.ResponseBody, rec.RawResponseBody,
+		requestBody, responseBody, rawResponseBody,
 		boolInt(rec.Streamed), boolInt(rec.Incomplete), boolInt(rec.HasToolCalls), boolInt(rec.Conversation), rec.Parser, nullString(rec.ParseError), nullString(rec.UsageJSON),
 		nullString(rec.Pricing),
 		rec.InputTokens, rec.OutputTokens, rec.CachedInputTokens, rec.CacheReadTokens,
@@ -910,8 +914,8 @@ func (s *Store) ListRequestsForTree(ctx context.Context, sessionID int64) ([]Req
 		if err := rows.Scan(&r.ID, &r.StartedAt, &r.Parser, &reqBody, &respBody); err != nil {
 			return nil, err
 		}
-		r.RequestBody = reqBody
-		r.ResponseBody = respBody
+		r.RequestBody = decodeBody(reqBody)
+		r.ResponseBody = decodeBody(respBody)
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -922,7 +926,7 @@ func (s *Store) GetRequest(ctx context.Context, id int64) (*RequestDetail, error
 		SELECT id, session_id, COALESCE(session_key, ''), COALESCE(session_header, ''),
 		       started_at, COALESCE(completed_at, ''), method, local_path, upstream_url,
 		       COALESCE(provider, ''), COALESCE(model, ''), status_code,
-		       streamed, incomplete, has_tool_calls, conversation, parser, COALESCE(parse_error, ''),
+		       streamed, incomplete, has_tool_calls, conversation, COALESCE(parser, ''), COALESCE(parse_error, ''),
 		       input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, total_tokens,
 		       COALESCE(pricing, ''), provider_cost,
 		       COALESCE(request_content_type, ''), COALESCE(response_content_type, ''),
@@ -973,9 +977,9 @@ func (s *Store) GetRequest(ctx context.Context, id int64) (*RequestDetail, error
 	d.CacheWriteTokens = intPtr(cacheWrite)
 	d.ReasoningTokens = intPtr(reasoning)
 	d.ProviderCost = floatPtr(providerCost)
-	d.RequestBody = string(reqBody)
-	d.ResponseBody = string(respBody)
-	d.RawResponseBody = string(rawRespBody)
+	d.RequestBody = string(decodeBody(reqBody))
+	d.ResponseBody = string(decodeBody(respBody))
+	d.RawResponseBody = string(decodeBody(rawRespBody))
 
 	cost := s.resolveCost(CostFacts{
 		Pricing:      d.Pricing,
