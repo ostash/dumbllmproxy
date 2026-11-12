@@ -65,12 +65,11 @@ type RequestRecord struct {
 	StartedAt     time.Time
 	CompletedAt   *time.Time
 
-	Method      string
-	LocalPath   string
-	UpstreamURL string
-	Provider    string
-	Model       string
-	StatusCode  int
+	Method     string
+	Endpoint   string
+	Provider   string
+	Model      string
+	StatusCode int
 
 	RequestContentType  string
 	ResponseContentType string
@@ -139,8 +138,7 @@ type RequestSummary struct {
 	StartedAt         string   `json:"started_at"`
 	CompletedAt       string   `json:"completed_at,omitempty"`
 	Method            string   `json:"method"`
-	LocalPath         string   `json:"local_path"`
-	UpstreamURL       string   `json:"upstream_url"`
+	Endpoint          string   `json:"endpoint"`
 	Provider          string   `json:"provider"`
 	Model             string   `json:"model"`
 	Pricing           string   `json:"pricing,omitempty"`
@@ -295,24 +293,24 @@ func (s *Store) SaveRequest(ctx context.Context, rec *RequestRecord) (int64, err
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO requests (
 			session_id, session_key, session_header, started_at, completed_at,
-			method, local_path, upstream_url, provider, model, status_code,
+			method, endpoint, provider, model, status_code,
 			request_content_type, response_content_type, metadata_json,
 			request_body, response_body, raw_response_body,
 			streamed, incomplete, has_tool_calls, conversation, parser, parse_error, usage_json, pricing,
 			input_tokens, output_tokens, cached_input_tokens, cache_read_tokens,
 			cache_write_tokens, reasoning_tokens, total_tokens,
-			provider_cost, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			provider_cost
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sessionID, nullString(sessionKey), nullString(sessionHeader),
 		formatTime(rec.StartedAt), nullTime(rec.CompletedAt),
-		rec.Method, rec.LocalPath, rec.UpstreamURL, rec.Provider, nullString(rec.Model), rec.StatusCode,
+		rec.Method, rec.Endpoint, rec.Provider, nullString(rec.Model), rec.StatusCode,
 		nullString(rec.RequestContentType), nullString(rec.ResponseContentType), nullString(rec.MetadataJSON),
 		requestBody, responseBody, rawResponseBody,
 		boolInt(rec.Streamed), boolInt(rec.Incomplete), boolInt(rec.HasToolCalls), boolInt(rec.Conversation), rec.Parser, nullString(rec.ParseError), nullString(rec.UsageJSON),
 		nullString(rec.Pricing),
 		rec.InputTokens, rec.OutputTokens, rec.CachedInputTokens, rec.CacheReadTokens,
 		rec.CacheWriteTokens, rec.ReasoningTokens, rec.TotalTokens,
-		rec.ProviderCost, formatTime(time.Now().UTC()),
+		rec.ProviderCost,
 	)
 	if err != nil {
 		return 0, err
@@ -651,7 +649,7 @@ func matchesRequestFilters(req RequestSummary, opts ListOptions) bool {
 			req.Provider,
 			req.Model,
 			req.Harness,
-			req.LocalPath,
+			req.Endpoint,
 			req.Method,
 			fmt.Sprintf("%d", req.StatusCode),
 		}, " "))
@@ -764,7 +762,7 @@ func (s *Store) GetSession(ctx context.Context, id int64) (*SessionSummary, erro
 
 const requestSummarySelect = `
 	SELECT id, session_id, COALESCE(session_key, ''), COALESCE(session_header, ''),
-	       started_at, COALESCE(completed_at, ''), method, local_path, upstream_url,
+	       started_at, COALESCE(completed_at, ''), method, endpoint,
 	       COALESCE(provider, ''), COALESCE(model, ''), status_code,
 	       streamed, incomplete, has_tool_calls, conversation, parser, COALESCE(parse_error, ''),
 	       input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, total_tokens,
@@ -924,7 +922,7 @@ func (s *Store) ListRequestsForTree(ctx context.Context, sessionID int64) ([]Req
 func (s *Store) GetRequest(ctx context.Context, id int64) (*RequestDetail, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, session_id, COALESCE(session_key, ''), COALESCE(session_header, ''),
-		       started_at, COALESCE(completed_at, ''), method, local_path, upstream_url,
+		       started_at, COALESCE(completed_at, ''), method, endpoint,
 		       COALESCE(provider, ''), COALESCE(model, ''), status_code,
 		       streamed, incomplete, has_tool_calls, conversation, COALESCE(parser, ''), COALESCE(parse_error, ''),
 		       input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, total_tokens,
@@ -951,7 +949,7 @@ func (s *Store) GetRequest(ctx context.Context, id int64) (*RequestDetail, error
 	)
 	err := row.Scan(
 		&d.ID, &sessionID, &d.SessionKey, &d.SessionHeader,
-		&d.StartedAt, &d.CompletedAt, &d.Method, &d.LocalPath, &d.UpstreamURL,
+		&d.StartedAt, &d.CompletedAt, &d.Method, &d.Endpoint,
 		&d.Provider, &d.Model, &d.StatusCode,
 		&d.Streamed, &d.Incomplete, &d.HasToolCalls, &d.Conversation, &d.Parser, &d.ParseError,
 		&inputTokens, &outputTokens, &cachedInput, &reasoning, &totalTokens,
@@ -1016,7 +1014,7 @@ func (s *Store) scanRequestSummary(row rowScanner) (RequestSummary, error) {
 		metadataJSON sql.NullString
 	)
 	err := row.Scan(&r.ID, &sessionID, &r.SessionKey, &r.SessionHeader,
-		&r.StartedAt, &r.CompletedAt, &r.Method, &r.LocalPath, &r.UpstreamURL,
+		&r.StartedAt, &r.CompletedAt, &r.Method, &r.Endpoint,
 		&r.Provider, &r.Model, &r.StatusCode,
 		&r.Streamed, &r.Incomplete, &r.HasToolCalls, &r.Conversation, &r.Parser, &r.ParseError,
 		&inputTokens, &outputTokens, &cachedInput, &reasoning, &totalTokens,

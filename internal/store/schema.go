@@ -16,8 +16,7 @@ var schema = []string{
 		started_at TEXT NOT NULL,
 		completed_at TEXT,
 		method TEXT NOT NULL,
-		local_path TEXT NOT NULL,
-		upstream_url TEXT NOT NULL,
+		endpoint TEXT NOT NULL,
 		provider TEXT,
 		model TEXT,
 		status_code INTEGER NOT NULL DEFAULT 0,
@@ -42,8 +41,7 @@ var schema = []string{
 		cache_write_tokens INTEGER,
 		reasoning_tokens INTEGER,
 		total_tokens INTEGER,
-		provider_cost REAL,
-		created_at TEXT NOT NULL
+		provider_cost REAL
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_requests_session_started
 		ON requests(session_id, started_at)`,

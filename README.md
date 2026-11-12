@@ -25,7 +25,7 @@ local web UI for inspecting conversations and HTTP exchanges.
 - Session-level failed/incomplete counts and filters.
 - Relative timestamps in lists and the timeline, with absolute times on hover.
 - Previous/next request navigation inside the request inspector.
-- Copy controls for request IDs and upstream URLs; conversation nodes are linkable via `#/session/{id}?node=...`.
+- Copy controls for request IDs and endpoints; conversation nodes are linkable via `#/session/{id}?node=...`.
 - Manual refresh preserves the selected conversation node, open drawer, and inspector pane. A "new captures" badge
   appears when polling detects new requests; nothing refreshes automatically.
 - JSON payloads can be expanded or collapsed in bulk.
@@ -114,7 +114,7 @@ appended to `base_url`:
 
 Stored per HTTP exchange:
 
-- Request start/completion timestamps, HTTP method, local path, upstream URL.
+- Request start/completion timestamps, HTTP method, endpoint (client path relative to the upstream prefix).
 - Provider (from the matched upstream config) and model (from request JSON).
 - HTTP status and content types.
 - Complete request body, decoded if compressed.

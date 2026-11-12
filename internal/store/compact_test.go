@@ -29,9 +29,9 @@ func TestCompactBodies(t *testing.T) {
 	prefixed := append(append([]byte{}, storagePrefix...), []byte("payload")...)
 	insert := func(body []byte) int64 {
 		res, err := s.db.ExecContext(ctx, `INSERT INTO requests
-			(started_at, method, local_path, upstream_url, status_code, parser, request_body, response_body, created_at)
-			VALUES (?, 'POST', '/x', 'http://up/x', 200, '', ?, ?, ?)`,
-			now, body, body, now)
+			(started_at, method, endpoint, status_code, parser, request_body, response_body)
+			VALUES (?, 'POST', '/x', 200, '', ?, ?)`,
+			now, body, body)
 		if err != nil {
 			t.Fatal(err)
 		}

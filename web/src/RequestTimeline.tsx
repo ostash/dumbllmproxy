@@ -40,7 +40,7 @@ export function RequestTimeline({ requests, selectedRequestIds, onSelect }: Prop
             </div>
             <div className="timeline-foot">
               <span>{req.method}</span>
-              <span className="muted">{req.local_path}</span>
+              <span className="muted">{[req.provider, req.endpoint].filter(Boolean).join(" ")}</span>
               <span className="muted">duration {formatDuration(req.started_at, req.completed_at)}</span>
               <span className="muted">tokens {formatTokens(req.total_tokens)}</span>
               <span className="muted">cost {formatCost(req.cost_amount)}</span>

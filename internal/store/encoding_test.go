@@ -134,8 +134,8 @@ func TestStoreCompressesBodiesAndReadsOldRows(t *testing.T) {
 	now := time.Now().UTC()
 	body := []byte(`{"model":"m","messages":[{"role":"user","content":"` + strings.Repeat("x", 2000) + `"}]}`)
 	rec := &RequestRecord{
-		SessionKey: "s1", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/x",
-		UpstreamURL: "http://up/x", Provider: "p", StatusCode: 200,
+		SessionKey: "s1", Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/x",
+		Provider: "p", StatusCode: 200,
 		Parser: "openai_chat", RequestBody: body, ResponseBody: body,
 	}
 	id, err := s.SaveRequest(ctx, rec)
@@ -170,9 +170,9 @@ func TestStoreCompressesBodiesAndReadsOldRows(t *testing.T) {
 	// A row written before compression existed must still read back unchanged.
 	old := []byte(`{"old":true}`)
 	res, err := s.db.ExecContext(ctx, `INSERT INTO requests
-		(started_at, method, local_path, upstream_url, status_code, parser, request_body, response_body, created_at)
-		VALUES (?, 'POST', '/old', 'http://up/old', 200, '', ?, ?, ?)`,
-		formatTime(now), old, old, formatTime(now))
+		(started_at, method, endpoint, status_code, parser, request_body, response_body)
+		VALUES (?, 'POST', '/old', 200, '', ?, ?)`,
+		formatTime(now), old, old)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -178,9 +178,6 @@ func TestProxyNonStreamingAndOpenRouterCost(t *testing.T) {
 	if strings.Contains(detail.MetadataJSON, "super-secret") || strings.Contains(detail.MetadataJSON, "secret-cookie") {
 		t.Fatalf("sensitive header leaked into metadata: %s", detail.MetadataJSON)
 	}
-	if detail.UpstreamURL != upstream.URL+"/base/v1/chat/completions?x=1" {
-		t.Fatalf("unexpected stored upstream URL: %s", detail.UpstreamURL)
-	}
 	if detail.CachedInputTokens == nil || *detail.CachedInputTokens != 2 {
 		t.Fatalf("cached tokens not extracted: %#v", detail.CachedInputTokens)
 	}
@@ -777,5 +774,33 @@ func TestProxyMultipleContentEncodingHeaders(t *testing.T) {
 	}
 	if detail.RequestBody != requestJSON {
 		t.Fatalf("nested request body was not decoded: %q", detail.RequestBody)
+	}
+}
+
+func TestProxyStoresEndpointRelativeToPrefix(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"model":"m","choices":[],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions?x=1",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("X-Session-Id", "endpoint-session")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	reqs := waitForRequests(t, st, waitForSessionID(t, st))
+	detail, err := st.GetRequest(context.Background(), reqs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Endpoint != "/v1/chat/completions?x=1" {
+		t.Fatalf("unexpected endpoint: %q", detail.Endpoint)
 	}
 }

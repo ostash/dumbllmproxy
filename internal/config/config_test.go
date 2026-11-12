@@ -96,3 +96,17 @@ func TestValidateRejectsRootPrefix(t *testing.T) {
 		t.Fatal("expected validation error for root prefix")
 	}
 }
+
+func TestValidateRejectsDuplicateNames(t *testing.T) {
+	cfg := &Config{
+		Proxy: ProxyConfig{Listen: "127.0.0.1:0", Database: "x.db"},
+		Upstreams: []UpstreamConfig{
+			{Name: "same", Prefix: "/a", BaseURL: "https://example.com", Parser: "none", Pricing: "none"},
+			{Name: "same", Prefix: "/b", BaseURL: "https://example.com", Parser: "none", Pricing: "none"},
+		},
+	}
+	cfg.SetDefaults()
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for duplicate names")
+	}
+}

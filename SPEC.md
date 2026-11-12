@@ -44,7 +44,7 @@ For each request, store:
 - Request start and completion timestamps.
 - Upstream/provider identification from the matched configuration.
 - Model, when identifiable from the request body.
-- HTTP method, local request path, and upstream URL.
+- HTTP method and endpoint (the client path relative to the matched upstream prefix).
 - Complete request body and final logical response body, decoded when possible.
 - HTTP status and request/response content types.
 - Session and metadata header values selected by configuration.
@@ -259,7 +259,7 @@ Show:
 - Provider and model.
 - Harness name, when it can be derived from configured metadata headers. Prefer `x-harness-id`, then OpenRouter's
   `X-OpenRouter-Title`, then the User-Agent product token.
-- Method and local path.
+- Method and endpoint (provider plus the client path relative to the upstream prefix).
 - Request duration, derived from start and completion timestamps, sortable and filterable (for example, slow requests).
 - Token usage and cost, when available.
 - An auxiliary marker for non-generation traffic.
@@ -318,7 +318,7 @@ For an individual request, provide:
 - A **Conversation / Payload** switch. Default to Conversation when a parsed conversation exists; otherwise default to
   Payload.
 - Previous/next navigation through the current request list, when the inspector was opened from it.
-- Copy controls for the request ID and upstream URL.
+- Copy controls for the request ID and endpoint.
 - A reconstructed conversation from that request's message history and final response, including recognized tool calls
   and tool results.
 - A payload view: pretty-printed, collapsible JSON for chat completions and raw text for other formats.

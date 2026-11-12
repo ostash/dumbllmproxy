@@ -35,8 +35,7 @@ export type RequestSummary = {
   started_at: string;
   completed_at?: string;
   method: string;
-  local_path: string;
-  upstream_url: string;
+  endpoint: string;
   provider: string;
   model: string;
   harness?: string;

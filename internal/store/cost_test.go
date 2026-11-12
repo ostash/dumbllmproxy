@@ -49,8 +49,7 @@ func saveDeepSeekRequest(t *testing.T, st *store.Store, sessionKey string, start
 		Conversation: true,
 		StartedAt:    startedAt,
 		Method:       "POST",
-		LocalPath:    "/deepseek/chat/completions",
-		UpstreamURL:  "https://api.deepseek.com/chat/completions",
+		Endpoint:     "/deepseek/chat/completions",
 		Provider:     "deepseek",
 		Model:        "deepseek-chat",
 		Pricing:      "deepseek",
@@ -142,8 +141,7 @@ func TestSessionCostSumsResolvedAmounts(t *testing.T) {
 			Conversation: true,
 			StartedAt:    now.Add(time.Duration(i) * time.Second),
 			Method:       "POST",
-			LocalPath:    "/x",
-			UpstreamURL:  "https://example.com/x",
+			Endpoint:     "/x",
 			Provider:     "p",
 			Model:        model,
 			Pricing:      "stub",
@@ -191,8 +189,7 @@ func TestRequestCostSortingUsesFreshCosts(t *testing.T) {
 			Conversation: true,
 			StartedAt:    now.Add(time.Duration(i) * time.Second),
 			Method:       "POST",
-			LocalPath:    "/x",
-			UpstreamURL:  "https://example.com/x",
+			Endpoint:     "/x",
 			Provider:     "p",
 			Model:        model,
 			Pricing:      "stub",
@@ -236,8 +233,8 @@ func TestSessionLastActivityUsesChronologicalOrder(t *testing.T) {
 	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	for _, started := range []time.Time{base, base.Add(500 * time.Millisecond)} {
 		if _, err := st.SaveRequest(ctx, &store.RequestRecord{
-			SessionKey: "s", Conversation: true, StartedAt: started, Method: "POST", LocalPath: "/x",
-			UpstreamURL: "https://example.com/x", Provider: "p", StatusCode: 200,
+			SessionKey: "s", Conversation: true, StartedAt: started, Method: "POST", Endpoint: "/x",
+			Provider: "p", StatusCode: 200,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -266,8 +263,8 @@ func TestSinceFilterUsesChronologicalOrder(t *testing.T) {
 	ctx := context.Background()
 	started := time.Date(2025, 1, 1, 0, 0, 0, 123_456_789, time.UTC)
 	if _, err := st.SaveRequest(ctx, &store.RequestRecord{
-		SessionKey: "s", Conversation: true, StartedAt: started, Method: "POST", LocalPath: "/x",
-		UpstreamURL: "https://example.com/x", Provider: "p", StatusCode: 200,
+		SessionKey: "s", Conversation: true, StartedAt: started, Method: "POST", Endpoint: "/x",
+		Provider: "p", StatusCode: 200,
 	}); err != nil {
 		t.Fatal(err)
 	}

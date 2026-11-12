@@ -95,7 +95,7 @@ export function RequestDrawer({ requestId, onClose, onOpenRequest }: Props) {
             <h2 id="drawer-title">HTTP request #{requestId}</h2>
             {detail && (
               <div className="muted small">
-                {detail.method} {detail.local_path} · {formatTime(detail.started_at)}
+                {detail.method} {[detail.provider, detail.endpoint].filter(Boolean).join(" ")} · {formatTime(detail.started_at)}
               </div>
             )}
           </div>
@@ -165,8 +165,7 @@ function HTTPTab({ detail }: { detail: RequestDetail }) {
         <h3>HTTP metadata</h3>
         <dl className="kv">
           <dt>Method</dt><dd>{detail.method}</dd>
-          <dt>Local path</dt><dd><code>{detail.local_path}</code></dd>
-          <dt>Upstream URL</dt><dd><code>{detail.upstream_url}</code> <CopyButton text={detail.upstream_url} /></dd>
+          <dt>Endpoint</dt><dd><code>{detail.endpoint}</code></dd>
           <dt>Status</dt><dd>{detail.status_code}</dd>
           <dt>Started</dt><dd>{formatTime(detail.started_at)}</dd>
           <dt>Completed</dt><dd>{formatTime(detail.completed_at)}</dd>

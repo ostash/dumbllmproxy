@@ -171,6 +171,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("proxy.database must not be empty")
 	}
 	seenPrefixes := map[string]bool{}
+	seenNames := map[string]bool{}
 	for i := range c.Upstreams {
 		u := &c.Upstreams[i]
 		if !strings.HasPrefix(u.Prefix, "/") {
@@ -186,6 +187,10 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("duplicate upstream prefix %q", u.Prefix)
 		}
 		seenPrefixes[u.Prefix] = true
+		if seenNames[u.Name] {
+			return fmt.Errorf("duplicate upstream name %q", u.Name)
+		}
+		seenNames[u.Name] = true
 		parsed, err := url.Parse(u.BaseURL)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			return fmt.Errorf("upstream %q has invalid base_url %q", u.Name, u.BaseURL)

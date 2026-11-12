@@ -76,13 +76,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	targetURL, err := up.TargetURL(r.URL)
 	if err != nil {
-		h.fail(w, r, up, up.BaseURL, startedAt, storedRequestBody, model, sessionKey, sessionHeader, metadata, err, parseErrors)
+		h.fail(w, r, up, startedAt, storedRequestBody, model, sessionKey, sessionHeader, metadata, err, parseErrors)
 		return
 	}
 
 	upReq, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL.String(), bytes.NewReader(rawRequestBody))
 	if err != nil {
-		h.fail(w, r, up, targetURL.String(), startedAt, storedRequestBody, model, sessionKey, sessionHeader, metadata, err, parseErrors)
+		h.fail(w, r, up, startedAt, storedRequestBody, model, sessionKey, sessionHeader, metadata, err, parseErrors)
 		return
 	}
 	copyRequestHeaders(upReq.Header, r.Header)
@@ -90,7 +90,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.client.Do(upReq)
 	if err != nil {
-		h.fail(w, r, up, targetURL.String(), startedAt, storedRequestBody, model, sessionKey, sessionHeader, metadata, err, parseErrors)
+		h.fail(w, r, up, startedAt, storedRequestBody, model, sessionKey, sessionHeader, metadata, err, parseErrors)
 		return
 	}
 	defer resp.Body.Close()
@@ -208,8 +208,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		StartedAt:           startedAt,
 		CompletedAt:         completedAt,
 		Method:              r.Method,
-		LocalPath:           r.URL.RequestURI(),
-		UpstreamURL:         targetURL.String(),
+		Endpoint:            requestEndpoint(up, r),
 		Provider:            up.Name,
 		Model:               captured.Model,
 		StatusCode:          resp.StatusCode,
@@ -285,6 +284,17 @@ func (h *Handler) session(header http.Header) (string, string) {
 	return "", ""
 }
 
+// requestEndpoint returns the client path relative to the matched upstream
+// prefix, including the query string. The prefix itself is routing detail and
+// is not stored; provider identifies the upstream.
+func requestEndpoint(up *config.UpstreamConfig, r *http.Request) string {
+	endpoint := up.RemainingPath(r.URL.Path)
+	if r.URL.RawQuery != "" {
+		endpoint += "?" + r.URL.RawQuery
+	}
+	return endpoint
+}
+
 // contentEncoding joins repeated Content-Encoding headers so nested encodings
 // declared on separate header lines are decoded in the right order.
 func contentEncoding(header http.Header) string {
@@ -299,7 +309,7 @@ func (h *Handler) save(rec *store.RequestRecord) {
 	}
 }
 
-func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.UpstreamConfig, upstreamURL string, startedAt time.Time, storedRequestBody []byte, model, sessionKey, sessionHeader string, metadata map[string]any, cause error, parseErrors []string) {
+func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.UpstreamConfig, startedAt time.Time, storedRequestBody []byte, model, sessionKey, sessionHeader string, metadata map[string]any, cause error, parseErrors []string) {
 	completed := time.Now().UTC()
 	body := []byte("upstream request failed: " + cause.Error())
 	h.logger.Printf("upstream request failed for %s: %v", r.URL.Path, cause)
@@ -310,8 +320,7 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.Upstre
 		StartedAt:          startedAt,
 		CompletedAt:        &completed,
 		Method:             r.Method,
-		LocalPath:          r.URL.RequestURI(),
-		UpstreamURL:        upstreamURL,
+		Endpoint:           requestEndpoint(up, r),
 		Provider:           up.Name,
 		Model:              model,
 		StatusCode:         http.StatusBadGateway,

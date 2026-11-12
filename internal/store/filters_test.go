@@ -25,23 +25,23 @@ func TestListRequestFilters(t *testing.T) {
 
 	records := []*store.RequestRecord{
 		{
-			SessionKey: "alpha", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/openrouter/v1/chat/completions",
-			UpstreamURL: "https://example.com/a", Provider: "openrouter", Model: "model-a",
+			SessionKey: "alpha", Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/openrouter/v1/chat/completions",
+			Provider: "openrouter", Model: "model-a",
 			StatusCode: 200, Streamed: true, HasToolCalls: true,
 		},
 		{
-			SessionKey: "beta", Conversation: true, StartedAt: now.Add(time.Second), Method: "POST", LocalPath: "/deepseek/chat/completions",
-			UpstreamURL: "https://example.com/b", Provider: "deepseek", Model: "model-b",
+			SessionKey: "beta", Conversation: true, StartedAt: now.Add(time.Second), Method: "POST", Endpoint: "/deepseek/chat/completions",
+			Provider: "deepseek", Model: "model-b",
 			StatusCode: 500, Incomplete: true,
 		},
 		{
-			StartedAt: now.Add(2 * time.Second), Method: "GET", LocalPath: "/openrouter/api/v1/models",
-			UpstreamURL: "https://example.com/c", Provider: "openrouter", Model: "",
+			StartedAt: now.Add(2 * time.Second), Method: "GET", Endpoint: "/openrouter/api/v1/models",
+			Provider: "openrouter", Model: "",
 			StatusCode: 200,
 		},
 		{
-			Conversation: true, StartedAt: now.Add(3 * time.Second), Method: "POST", LocalPath: "/openrouter/v1/chat/completions",
-			UpstreamURL: "https://example.com/d", Provider: "openrouter", Model: "model-c",
+			Conversation: true, StartedAt: now.Add(3 * time.Second), Method: "POST", Endpoint: "/openrouter/v1/chat/completions",
+			Provider: "openrouter", Model: "model-c",
 			StatusCode: 200,
 		},
 	}
@@ -103,9 +103,9 @@ func TestListSessionFilters(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	for _, rec := range []*store.RequestRecord{
-		{SessionKey: "alpha", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/a", UpstreamURL: "https://e/a", Provider: "openrouter", Model: "model-a", StatusCode: 200},
-		{SessionKey: "beta", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/b", UpstreamURL: "https://e/b", Provider: "deepseek", Model: "model-b", StatusCode: 200},
-		{Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/c", UpstreamURL: "https://e/c", Provider: "openrouter", StatusCode: 200},
+		{SessionKey: "alpha", Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/a", Provider: "openrouter", Model: "model-a", StatusCode: 200},
+		{SessionKey: "beta", Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/b", Provider: "deepseek", Model: "model-b", StatusCode: 200},
+		{Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/c", Provider: "openrouter", StatusCode: 200},
 	} {
 		if _, err := st.SaveRequest(ctx, rec); err != nil {
 			t.Fatal(err)
@@ -150,8 +150,7 @@ func TestRequestDurationFilterAndSort(t *testing.T) {
 		completed := base.Add(duration)
 		if _, err := st.SaveRequest(ctx, &store.RequestRecord{
 			SessionKey: "s", StartedAt: base, CompletedAt: &completed,
-			Method: "POST", LocalPath: "/x", UpstreamURL: "https://example.com/x",
-			Provider: "p", Model: "m", StatusCode: 200,
+			Method: "POST", Endpoint: "/x", Provider: "p", Model: "m", StatusCode: 200,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -206,9 +205,9 @@ func TestSessionFailureCountsAndFilters(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	for _, rec := range []*store.RequestRecord{
-		{SessionKey: "bad", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/a", UpstreamURL: "https://e/a", Provider: "p", StatusCode: 500},
-		{SessionKey: "bad", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/b", UpstreamURL: "https://e/b", Provider: "p", StatusCode: 200, Incomplete: true},
-		{SessionKey: "good", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/c", UpstreamURL: "https://e/c", Provider: "p", StatusCode: 200},
+		{SessionKey: "bad", Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/a", Provider: "p", StatusCode: 500},
+		{SessionKey: "bad", Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/b", Provider: "p", StatusCode: 200, Incomplete: true},
+		{SessionKey: "good", Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/c", Provider: "p", StatusCode: 200},
 	} {
 		if _, err := st.SaveRequest(ctx, rec); err != nil {
 			t.Fatal(err)
@@ -256,8 +255,8 @@ func TestFacetsAndHarnessFilter(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	for _, rec := range []*store.RequestRecord{
-		{SessionKey: "s1", StartedAt: now, Method: "POST", LocalPath: "/a", UpstreamURL: "https://e/a", Provider: "openrouter", Model: "model-b", StatusCode: 200, MetadataJSON: `{"request.X-Harness-Id":"pi"}`},
-		{SessionKey: "s2", StartedAt: now, Method: "POST", LocalPath: "/b", UpstreamURL: "https://e/b", Provider: "deepseek", Model: "model-a", StatusCode: 200, MetadataJSON: `{"request.X-Harness-Id":"claude"}`},
+		{SessionKey: "s1", StartedAt: now, Method: "POST", Endpoint: "/a", Provider: "openrouter", Model: "model-b", StatusCode: 200, MetadataJSON: `{"request.X-Harness-Id":"pi"}`},
+		{SessionKey: "s2", StartedAt: now, Method: "POST", Endpoint: "/b", Provider: "deepseek", Model: "model-a", StatusCode: 200, MetadataJSON: `{"request.X-Harness-Id":"claude"}`},
 	} {
 		if _, err := st.SaveRequest(ctx, rec); err != nil {
 			t.Fatal(err)
@@ -297,8 +296,8 @@ func TestSessionProvidersAreSorted(t *testing.T) {
 	now := time.Now().UTC()
 	for _, provider := range []string{"zeta", "alpha", "middle"} {
 		if _, err := st.SaveRequest(ctx, &store.RequestRecord{
-			SessionKey: "s", Conversation: true, StartedAt: now, Method: "POST", LocalPath: "/x",
-			UpstreamURL: "https://e/x", Provider: provider, StatusCode: 200,
+			SessionKey: "s", Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/x",
+			Provider: provider, StatusCode: 200,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -333,23 +332,23 @@ func TestAuxiliaryRequestsAreNotSessioned(t *testing.T) {
 	// A conversation request with a session header joins the session.
 	if _, err := st.SaveRequest(ctx, &store.RequestRecord{
 		SessionKey: "s", SessionHeader: "X-Session-Id", Conversation: true,
-		StartedAt: now, Method: "POST", LocalPath: "/v1/chat/completions",
-		UpstreamURL: "https://e/v1/chat/completions", Provider: "p", StatusCode: 200,
+		StartedAt: now, Method: "POST", Endpoint: "/v1/chat/completions",
+		Provider: "p", StatusCode: 200,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// Auxiliary traffic with the same header must not join it.
 	if _, err := st.SaveRequest(ctx, &store.RequestRecord{
 		SessionKey: "s", SessionHeader: "X-Session-Id", Conversation: false,
-		StartedAt: now, Method: "GET", LocalPath: "/api/v1/models",
-		UpstreamURL: "https://e/api/v1/models", Provider: "p", StatusCode: 200,
+		StartedAt: now, Method: "GET", Endpoint: "/api/v1/models",
+		Provider: "p", StatusCode: 200,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// Auxiliary traffic without a header must not create the unassigned group.
 	if _, err := st.SaveRequest(ctx, &store.RequestRecord{
-		Conversation: false, StartedAt: now, Method: "GET", LocalPath: "/api/v1/presets",
-		UpstreamURL: "https://e/api/v1/presets", Provider: "p", StatusCode: 200,
+		Conversation: false, StartedAt: now, Method: "GET", Endpoint: "/api/v1/presets",
+		Provider: "p", StatusCode: 200,
 	}); err != nil {
 		t.Fatal(err)
 	}

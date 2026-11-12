@@ -122,8 +122,7 @@ export function RequestInspector({
           </h1>
           <p className="muted">
             <span className={statusClass(detail.status_code)}>{detail.status_code || "ERR"}</span>{" "}
-            {detail.method} {detail.local_path} · {formatTime(detail.started_at)}
-            {detail.provider && <> · {detail.provider}</>}
+            {detail.method} {[detail.provider, detail.endpoint].filter(Boolean).join(" ")} · {formatTime(detail.started_at)}
             {detail.model && <> · {detail.model}</>}
             {detail.harness && <span className="chip">{detail.harness}</span>}
             {detail.streamed && <span className="chip">streamed</span>}
@@ -206,7 +205,7 @@ export function RequestInspector({
               <h3>Request</h3>
               <dl className="kv">
                 <dt>Request ID</dt><dd>#{detail.id} <CopyButton text={String(detail.id)} /></dd>
-                <dt>Upstream URL</dt><dd><code>{detail.upstream_url}</code> <CopyButton text={detail.upstream_url} /></dd>
+                <dt>Endpoint</dt><dd><code>{detail.endpoint}</code></dd>
                 <dt>Status</dt><dd><span className={statusClass(detail.status_code)}>{detail.status_code || "ERR"}</span></dd>
                 <dt>Provider</dt><dd>{detail.provider || "—"}</dd>
                 <dt>Model</dt><dd>{detail.model || "—"}</dd>

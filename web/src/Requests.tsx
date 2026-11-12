@@ -382,7 +382,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                     <td>{r.harness ? <span className="chip">{r.harness}</span> : <span className="muted">—</span>}</td>
                     <td className="path-cell">
                       <div>{r.method}</div>
-                      <div className="muted small">{r.local_path}</div>
+                      <div className="muted small">{[r.provider, r.endpoint].filter(Boolean).join(" ")}</div>
                     </td>
                     <td className="nowrap">{formatDuration(r.started_at, r.completed_at)}</td>
                     <td className="numeric token-cell">
