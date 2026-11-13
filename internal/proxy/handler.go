@@ -149,6 +149,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		now := time.Now().UTC()
 		completedAt = &now
 
+		streamComplete := false
 		decodedStream, decodeErr := capture.Decode(rawStream.Bytes(), contentEncoding(resp.Header))
 		if decodeErr != nil {
 			responseBody = rawStream.Bytes()
@@ -159,6 +160,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			recon := openai.NewStreamReconstructor()
 			recon.Feed(decodedStream)
 			reconBody, complete, parseErr := recon.Finish()
+			streamComplete = complete && parseErr == nil
 			if reconBody != nil {
 				responseBody = reconBody
 			} else {
@@ -175,7 +177,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// Unknown stream format: preserve the decoded stream as one raw blob.
 			responseBody = decodedStream
 		}
-		if readErr != nil {
+		// A read error after a complete stream is usually the client closing
+		// the connection after [DONE]. The logical response is already
+		// complete, so it must not be marked incomplete.
+		if readErr != nil && !streamComplete {
 			incomplete = true
 			if streamParseError == "" {
 				streamParseError = "stream read: " + readErr.Error()

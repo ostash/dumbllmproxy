@@ -285,6 +285,111 @@ func TestProxyStreamingPassthroughAndReconstruction(t *testing.T) {
 	}
 }
 
+func TestProxyCompletedStreamCanceledAfterDoneIsNotIncomplete(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		io.WriteString(w, "data: {\"id\":\"cmpl-c\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":null}]}\n\n")
+		io.WriteString(w, "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n\n")
+		io.WriteString(w, "data: [DONE]\n\n")
+		flusher.Flush()
+		// Keep the response open until the client cancels, so the proxy sees a
+		// cancellation after [DONE] rather than a clean EOF.
+		<-r.Context().Done()
+	}))
+	defer upstream.Close()
+
+	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reqBody := `{"model":"m","messages":[{"role":"user","content":"hi"}],"stream":true}`
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Session-Id", "cancel-after-done")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := bufio.NewReader(resp.Body)
+	var seen strings.Builder
+	for {
+		line, err := reader.ReadString('\n')
+		seen.WriteString(line)
+		if strings.Contains(seen.String(), "[DONE]") {
+			break
+		}
+		if err != nil {
+			t.Fatalf("stream ended before [DONE]: %v\n%s", err, seen.String())
+		}
+	}
+	// The client has the complete stream; cancel as a harness does after it
+	// has consumed the final chunk.
+	cancel()
+	resp.Body.Close()
+
+	reqs := waitForRequests(t, st, waitForSessionID(t, st))
+	if len(reqs) != 1 {
+		t.Fatalf("expected one request, got %d", len(reqs))
+	}
+	r := reqs[0]
+	if r.Incomplete {
+		t.Fatalf("completed stream was marked incomplete: %q", r.ParseError)
+	}
+	if r.ParseError != "" {
+		t.Fatalf("completed stream has parse error: %q", r.ParseError)
+	}
+	detail, err := st.GetRequest(context.Background(), r.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.RawResponseBody != "" {
+		t.Fatalf("complete stream should not store raw SSE fallback")
+	}
+}
+
+func TestProxyCanceledStreamWithoutDoneIsIncomplete(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		io.WriteString(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\n")
+		flusher.Flush()
+		<-r.Context().Done()
+	}))
+	defer upstream.Close()
+
+	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reqBody := `{"model":"m","messages":[{"role":"user","content":"hi"}],"stream":true}`
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Session-Id", "cancel-before-done")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := bufio.NewReader(resp.Body)
+	if _, err := reader.ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	resp.Body.Close()
+
+	reqs := waitForRequests(t, st, waitForSessionID(t, st))
+	if len(reqs) != 1 {
+		t.Fatalf("expected one request, got %d", len(reqs))
+	}
+	r := reqs[0]
+	if !r.Incomplete {
+		t.Fatal("canceled stream without [DONE] should be incomplete")
+	}
+	if !strings.Contains(r.ParseError, "context canceled") {
+		t.Fatalf("expected context canceled parse error, got %q", r.ParseError)
+	}
+}
+
 func waitForSessionID(t *testing.T, st *store.Store) int64 {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
