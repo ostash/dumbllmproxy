@@ -554,11 +554,6 @@ th.clickable:hover {
   font-weight: 600;
 }
 
-.title-copy {
-  margin-left: 8px;
-  vertical-align: middle;
-}
-
 .drawer-actions {
   display: flex;
   align-items: center;

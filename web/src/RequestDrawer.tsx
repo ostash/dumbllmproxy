@@ -14,7 +14,6 @@ import {
 } from "./format";
 import { JSONView } from "./JSONView";
 import { PayloadView } from "./PayloadView";
-import { CopyButton } from "./CopyButton";
 
 type Props = {
   requestId: number;
@@ -100,7 +99,6 @@ export function RequestDrawer({ requestId, onClose, onOpenRequest }: Props) {
             )}
           </div>
           <div className="drawer-actions">
-            <CopyButton text={String(requestId)} />
             {onOpenRequest && (
               <button className="secondary" onClick={() => onOpenRequest(requestId)}>
                 Open full request
@@ -203,8 +201,17 @@ function UsageTab({ detail }: { detail: RequestDetail }) {
           <dt>Generated</dt><dd>{formatTokens(detail.output_tokens)}</dd>
           <dt>Reasoning</dt><dd>{formatTokens(detail.reasoning_tokens)}</dd>
           <dt>Total</dt><dd>{formatTokens(detail.total_tokens)}</dd>
-          <dt>Cache read</dt><dd>{formatTokens(detail.cache_read_tokens)}</dd>
-          <dt>Cache write</dt><dd>{formatTokens(detail.cache_write_tokens)}</dd>
+          {detail.cache_read_tokens !== undefined &&
+            detail.cache_read_tokens !== detail.cached_input_tokens && (
+              <>
+                <dt>Cache read</dt><dd>{formatTokens(detail.cache_read_tokens)}</dd>
+              </>
+            )}
+          {detail.cache_write_tokens !== undefined && detail.cache_write_tokens > 0 && (
+            <>
+              <dt>Cache write</dt><dd>{formatTokens(detail.cache_write_tokens)}</dd>
+            </>
+          )}
         </dl>
         <p className="muted small">
           Non-cached input is input minus cached input when both are reported. Reasoning tokens are
@@ -216,8 +223,6 @@ function UsageTab({ detail }: { detail: RequestDetail }) {
         <dl className="kv">
           <dt>Final cost</dt><dd>{formatCost(detail.cost_amount)}</dd>
           <dt>Source</dt><dd>{detail.cost_source || "unavailable"}</dd>
-          <dt>Provider reported</dt><dd>{formatCost(detail.provider_cost)}</dd>
-          <dt>Calculated</dt><dd>{formatCost(detail.calculated_cost)}</dd>
         </dl>
       </section>
       <section>

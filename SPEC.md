@@ -329,7 +329,6 @@ For an individual request, provide:
 - A **Conversation / Payload** switch. Default to Conversation when a parsed conversation exists; otherwise default to
   Payload.
 - Previous/next navigation through the current request list, when the inspector was opened from it.
-- Copy controls for the request ID and endpoint.
 - A reconstructed conversation from that request's message history and final response, including recognized tool calls
   and tool results.
 - A payload view: pretty-printed, collapsible JSON for chat completions and raw text for other formats.

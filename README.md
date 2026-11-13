@@ -24,7 +24,7 @@ local web UI for inspecting conversations and HTTP exchanges.
 - Session-level failed/incomplete counts and filters.
 - Relative timestamps in the Sessions list and timeline; the Requests list shows full timestamps with milliseconds.
 - Previous/next request navigation inside the request inspector.
-- Copy controls for request IDs and endpoints; conversation nodes are linkable via `#/session/{id}?node=...`.
+- Copy controls for payloads; conversation nodes are linkable via `#/session/{id}?node=...`.
 - Manual refresh preserves the selected conversation node, open drawer, and inspector pane. A "new captures" badge
   appears when polling detects new requests; nothing refreshes automatically.
 - JSON payloads can be expanded or collapsed in bulk.

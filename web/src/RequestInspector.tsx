@@ -9,7 +9,6 @@ import { PayloadView } from "./PayloadView";
 import { JSONView } from "./JSONView";
 import { formatCost, formatDuration, formatTime, formatTokens, statusClass } from "./format";
 import { TokenBreakdown } from "./TokenBreakdown";
-import { CopyButton } from "./CopyButton";
 
 type Props = {
   requestId: number;
@@ -118,7 +117,6 @@ export function RequestInspector({
         <div className="inspector-title">
           <h1>
             Request #{detail.id}
-            <CopyButton text={String(detail.id)} className="title-copy" />
           </h1>
           <p className="muted">
             <span className={statusClass(detail.status_code)}>{detail.status_code || "ERR"}</span>{" "}
@@ -148,6 +146,12 @@ export function RequestInspector({
           <Stat label="Session" value={detail.session_key || "unassigned"} />
         </div>
       </div>
+
+      {detail.parse_error && (
+        <div className="warn-box">
+          <strong>Capture warning:</strong> {detail.parse_error}
+        </div>
+      )}
 
       <div className="inspector-note">
         {paneMode === "conversation"
@@ -204,30 +208,60 @@ export function RequestInspector({
             <section>
               <h3>Request</h3>
               <dl className="kv">
-                <dt>Request ID</dt><dd>#{detail.id} <CopyButton text={String(detail.id)} /></dd>
+                <dt>Request ID</dt><dd>#{detail.id}</dd>
+                <dt>Method</dt><dd>{detail.method}</dd>
                 <dt>Endpoint</dt><dd><code>{detail.endpoint}</code></dd>
                 <dt>Status</dt><dd><span className={statusClass(detail.status_code)}>{detail.status_code || "ERR"}</span></dd>
                 <dt>Provider</dt><dd>{detail.provider || "—"}</dd>
                 <dt>Model</dt><dd>{detail.model || "—"}</dd>
                 <dt>Harness</dt><dd>{detail.harness || "—"}</dd>
-                <dt>Session</dt><dd>{detail.session_key || "unassigned"}</dd>
+                <dt>Session</dt><dd>{detail.session_key || "unassigned"}{detail.session_header ? ` (${detail.session_header})` : ""}</dd>
                 <dt>Started</dt><dd>{formatTime(detail.started_at)}</dd>
                 <dt>Completed</dt><dd>{formatTime(detail.completed_at)}</dd>
                 <dt>Duration</dt><dd>{formatDuration(detail.started_at, detail.completed_at)}</dd>
                 <dt>Parser</dt><dd>{detail.parser || "—"}</dd>
+                <dt>Request content type</dt><dd>{detail.request_content_type || "—"}</dd>
+                <dt>Response content type</dt><dd>{detail.response_content_type || "—"}</dd>
+                <dt>Streamed</dt><dd>{detail.streamed ? "yes" : "no"}</dd>
+                <dt>Incomplete</dt><dd>{detail.incomplete ? "yes" : "no"}</dd>
               </dl>
+            </section>
+
+            <section>
+              <h3>Extracted headers</h3>
+              <JSONView value={detail.metadata_json} />
+              <p className="muted small">Full headers are not stored. Only configured session and metadata headers are extracted.</p>
             </section>
 
             <section>
               <h3>Tokens & cost</h3>
               <dl className="kv">
-                <dt>Input</dt><dd>{formatTokens(detail.input_tokens)}</dd>
-                <dt>Cached input</dt><dd>{formatTokens(detail.cached_input_tokens)}</dd>
-                <dt>Non-cached input</dt>
-                <dd>{formatTokens(detail.input_tokens !== undefined && detail.cached_input_tokens !== undefined ? Math.max(0, detail.input_tokens - detail.cached_input_tokens) : undefined)}</dd>
-                <dt>Generated</dt><dd>{formatTokens(detail.output_tokens)}</dd>
-                <dt>Reasoning</dt><dd>{formatTokens(detail.reasoning_tokens)}</dd>
+                <dt>Input</dt>
+                <dd>
+                  {formatTokens(detail.input_tokens)}
+                  {detail.input_tokens !== undefined && detail.cached_input_tokens !== undefined && (
+                    <> (cached {formatTokens(detail.cached_input_tokens)} + non-cached {formatTokens(Math.max(0, detail.input_tokens - detail.cached_input_tokens))})</>
+                  )}
+                </dd>
+                <dt>Output</dt>
+                <dd>
+                  {formatTokens(detail.output_tokens)}
+                  {detail.output_tokens !== undefined && detail.reasoning_tokens !== undefined && (
+                    <> (completion {formatTokens(Math.max(0, detail.output_tokens - detail.reasoning_tokens))} + reasoning {formatTokens(detail.reasoning_tokens)})</>
+                  )}
+                </dd>
                 <dt>Total</dt><dd>{formatTokens(detail.total_tokens)}</dd>
+                {detail.cache_read_tokens !== undefined &&
+                  detail.cache_read_tokens !== detail.cached_input_tokens && (
+                    <>
+                      <dt>Cache read</dt><dd>{formatTokens(detail.cache_read_tokens)}</dd>
+                    </>
+                  )}
+                {detail.cache_write_tokens !== undefined && detail.cache_write_tokens > 0 && (
+                  <>
+                    <dt>Cache write</dt><dd>{formatTokens(detail.cache_write_tokens)}</dd>
+                  </>
+                )}
                 <dt>Cost</dt><dd>{formatCost(detail.cost_amount)}</dd>
                 <dt>Cost source</dt><dd>{detail.cost_source || "unavailable"}</dd>
               </dl>
