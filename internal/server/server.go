@@ -245,7 +245,6 @@ func parseListOptions(r *http.Request, defaultSort string, allowedSorts map[stri
 	}
 	for name, target := range map[string]**bool{
 		"incomplete": &opts.Incomplete,
-		"streamed":   &opts.Streamed,
 		"tool_calls": &opts.HasToolCalls,
 		"unassigned": &opts.Unassigned,
 	} {
@@ -258,13 +257,6 @@ func parseListOptions(r *http.Request, defaultSort string, allowedSorts map[stri
 	opts.Provider = strings.TrimSpace(q.Get("provider"))
 	opts.Model = strings.TrimSpace(q.Get("model"))
 	opts.Harness = strings.TrimSpace(q.Get("harness"))
-	if value := strings.TrimSpace(q.Get("min_duration")); value != "" {
-		seconds, err := strconv.ParseFloat(value, 64)
-		if err != nil || seconds < 0 {
-			return opts, fmt.Errorf("invalid min_duration")
-		}
-		opts.MinDuration = time.Duration(seconds * float64(time.Second))
-	}
 	for name, target := range map[string]**bool{
 		"has_failures":   &opts.HasFailures,
 		"has_incomplete": &opts.HasIncomplete,

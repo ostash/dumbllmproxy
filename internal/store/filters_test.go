@@ -59,7 +59,6 @@ func TestListRequestFilters(t *testing.T) {
 	}{
 		{"failed", store.ListOptions{Failed: true}, 1},
 		{"incomplete", store.ListOptions{Incomplete: boolPtr(true)}, 1},
-		{"streamed", store.ListOptions{Streamed: boolPtr(true)}, 1},
 		{"tool calls", store.ListOptions{HasToolCalls: boolPtr(true)}, 1},
 		{"unassigned", store.ListOptions{Unassigned: boolPtr(true)}, 1},
 		{"provider", store.ListOptions{Provider: "openrouter"}, 2},
@@ -129,7 +128,7 @@ func TestListSessionFilters(t *testing.T) {
 
 func boolPtr(v bool) *bool { return &v }
 
-func TestRequestDurationFilterAndSort(t *testing.T) {
+func TestRequestDurationSort(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +136,7 @@ func TestRequestDurationFilterAndSort(t *testing.T) {
 	defer st.Close()
 	ctx := context.Background()
 	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	for i, duration := range []time.Duration{2 * time.Second, 40 * time.Second, 10 * time.Second} {
+	for _, duration := range []time.Duration{2 * time.Second, 40 * time.Second, 10 * time.Second} {
 		completed := base.Add(duration)
 		if _, err := st.SaveRequest(ctx, &store.RequestRecord{
 			SessionKey: "s", StartedAt: base, CompletedAt: &completed,
@@ -145,17 +144,6 @@ func TestRequestDurationFilterAndSort(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		_ = i
-	}
-
-	slow, total, err := st.ListAllRequestsFiltered(ctx, store.ListOptions{
-		MinDuration: 30 * time.Second, Limit: 10,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if total != 1 || len(slow) != 1 {
-		t.Fatalf("expected one slow request, got %d/%d", len(slow), total)
 	}
 
 	sorted, _, err := st.ListAllRequestsFiltered(ctx, store.ListOptions{

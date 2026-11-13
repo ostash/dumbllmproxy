@@ -8,6 +8,19 @@ export function formatTime(value?: string): string {
   return date.toLocaleString();
 }
 
+// formatTimestamp renders local time as YYYY-MM-DD HH:MM:SS.mmm.
+export function formatTimestamp(value?: string): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (n: number, width = 2) => String(n).padStart(width, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.` +
+    pad(date.getMilliseconds(), 3)
+  );
+}
+
 export function formatTokens(value?: number): string {
   if (value === undefined || value === null) return "—";
   return value.toLocaleString();
@@ -61,16 +74,12 @@ export function nonCachedInputTokens(input?: number, cached?: number): number | 
 
 export function formatCost(amount?: number): string {
   if (amount === undefined || amount === null) return "—";
-  const abs = Math.abs(amount);
-  const tiny = abs > 0 && abs < 0.01;
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency: "USD",
-      // Do not round very small costs to a handful of decimals; provider
-      // costs can legitimately carry more precision than that.
-      minimumFractionDigits: tiny ? 0 : 2,
-      maximumFractionDigits: tiny ? 20 : 6
+      minimumFractionDigits: 6,
+      maximumFractionDigits: 6
     }).format(amount);
   } catch {
     return `${amount} USD`;

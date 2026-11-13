@@ -483,15 +483,34 @@ th.clickable:hover {
   background: #f8faff;
 }
 
-.selected-row {
-  background: var(--accent-soft);
+.clickable-row.row-error {
+  background: var(--danger-bg);
 }
 
-.request-id {
-  display: flex;
-  align-items: center;
-  gap: 7px;
+.clickable-row.row-error:hover {
+  background: #fde8e6;
+}
+
+.clickable-row.row-incomplete {
+  background: var(--warn-bg);
+}
+
+.clickable-row.row-incomplete:hover {
+  background: #ffefb8;
+}
+
+.request-number {
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.row-error .request-number {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.selected-row {
+  background: var(--accent-soft);
 }
 
 .path-cell {

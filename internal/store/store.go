@@ -190,13 +190,11 @@ type ListOptions struct {
 	Query        string
 	Failed       bool
 	Incomplete   *bool
-	Streamed     *bool
 	HasToolCalls *bool
 	Unassigned   *bool
 	Provider     string
 	Model        string
 	Harness      string
-	MinDuration  time.Duration
 
 	// Session-level quick filters.
 	HasFailures   *bool
@@ -600,9 +598,6 @@ func matchesRequestFilters(req RequestSummary, opts ListOptions) bool {
 	if opts.Incomplete != nil && req.Incomplete != *opts.Incomplete {
 		return false
 	}
-	if opts.Streamed != nil && req.Streamed != *opts.Streamed {
-		return false
-	}
 	if opts.HasToolCalls != nil && req.HasToolCalls != *opts.HasToolCalls {
 		return false
 	}
@@ -619,12 +614,6 @@ func matchesRequestFilters(req RequestSummary, opts ListOptions) bool {
 	}
 	if opts.Harness != "" && !strings.EqualFold(req.Harness, opts.Harness) {
 		return false
-	}
-	if opts.MinDuration > 0 {
-		duration, ok := requestDuration(req)
-		if !ok || duration < opts.MinDuration {
-			return false
-		}
 	}
 	if needle := strings.ToLower(strings.TrimSpace(opts.Query)); needle != "" {
 		haystack := strings.ToLower(strings.Join([]string{

@@ -268,22 +268,22 @@ Provide a second top-level view listing individual HTTP exchanges/model generati
 Show:
 
 - Started time.
-- Request ID and HTTP status.
+- Request ID, with non-200 responses highlighted in red and incomplete captures highlighted in yellow.
 - Session identifier, or an unassigned marker.
 - Provider and model.
 - Harness name, when it can be derived from configured metadata headers. Prefer `x-harness-id`, then OpenRouter's
   `X-OpenRouter-Title`, then the User-Agent product token.
 - Method and endpoint (provider plus the client path relative to the upstream prefix).
-- Request duration, derived from start and completion timestamps, sortable and filterable (for example, slow requests).
+- Request duration, derived from start and completion timestamps, sortable.
 - Token usage and cost, when available.
 
 Allow filtering and sorting, including sorting by freshly calculated cost. Use the same page sizes and rolling time
 windows as the Sessions view. Selecting a request opens the request inspector.
 
 Search must cover the whole result set, not just the current page. Match request ID, session identifier, provider,
-model, harness, method, path, and status. Provide quick filters for failed responses, incomplete captures, streaming
-responses, requests with tool calls, unassigned conversation requests, slow requests, and a specific provider, model,
-or harness. Provider, model, and harness inputs should suggest known values.
+model, harness, method, path, and status. Provide quick filters for failed responses, incomplete captures, requests with
+tool calls, unassigned conversation requests, and a specific provider, model, or harness. Provider, model, and harness
+inputs should suggest known values.
 
 Assigned sessions must be reachable from the request row without losing the row's own click target.
 

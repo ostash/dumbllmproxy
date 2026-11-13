@@ -16,13 +16,13 @@ local web UI for inspecting conversations and HTTP exchanges.
   Opening a request shows its reconstructed conversation with turns, tool calls and tool results.
 - Paginated Sessions and Requests lists (50/100/200 rows) with rolling time filters from the last hour through the last
   year.
-- Server-side search across the whole result set, plus quick filters for failed responses, incomplete captures,
-  streaming, tool calls, unassigned conversation requests, slow requests, and a specific provider, model, or harness.
-  Provider/model/harness inputs suggest known values. Active filters can be cleared in one click.
+- Server-side search across the whole result set, plus quick filters for failed responses, incomplete captures, tool
+  calls, unassigned conversation requests, and a specific provider, model, or harness. Provider/model/harness inputs
+  suggest known values. Active filters can be cleared in one click.
 - Pagination with first/last and a direct page jump.
-- Sortable request duration and a "slow requests" filter.
+- Sortable request duration.
 - Session-level failed/incomplete counts and filters.
-- Relative timestamps in lists and the timeline, with absolute times on hover.
+- Relative timestamps in the Sessions list and timeline; the Requests list shows full timestamps with milliseconds.
 - Previous/next request navigation inside the request inspector.
 - Copy controls for request IDs and endpoints; conversation nodes are linkable via `#/session/{id}?node=...`.
 - Manual refresh preserves the selected conversation node, open drawer, and inspector pane. A "new captures" badge

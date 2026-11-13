@@ -12,13 +12,11 @@ export type ListParams = {
   q?: string;
   status?: "failed";
   incomplete?: boolean;
-  streamed?: boolean;
   tool_calls?: boolean;
   unassigned?: boolean;
   provider?: string;
   model?: string;
   harness?: string;
-  min_duration?: number;
   has_failures?: boolean;
   has_incomplete?: boolean;
 };
@@ -54,13 +52,11 @@ function withQuery(url: string, params: ListParams): string {
   if (params.q) search.set("q", params.q);
   if (params.status) search.set("status", params.status);
   if (params.incomplete) search.set("incomplete", "1");
-  if (params.streamed) search.set("streamed", "1");
   if (params.tool_calls) search.set("tool_calls", "1");
   if (params.unassigned) search.set("unassigned", "1");
   if (params.provider) search.set("provider", params.provider);
   if (params.model) search.set("model", params.model);
   if (params.harness) search.set("harness", params.harness);
-  if (params.min_duration !== undefined) search.set("min_duration", String(params.min_duration));
   if (params.has_failures) search.set("has_failures", "1");
   if (params.has_incomplete) search.set("has_incomplete", "1");
   const query = search.toString();

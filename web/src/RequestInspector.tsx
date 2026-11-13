@@ -102,7 +102,7 @@ export function RequestInspector({
             className="secondary"
             disabled={prevRequestId === undefined}
             onClick={() => prevRequestId !== undefined && onNavigateRequest(prevRequestId)}
-            title="Previous request in the current list"
+            title="Previous request (lower ID)"
           >
             ← Prev
           </button>
@@ -110,7 +110,7 @@ export function RequestInspector({
             className="secondary"
             disabled={nextRequestId === undefined}
             onClick={() => nextRequestId !== undefined && onNavigateRequest(nextRequestId)}
-            title="Next request in the current list"
+            title="Next request (higher ID)"
           >
             Next →
           </button>

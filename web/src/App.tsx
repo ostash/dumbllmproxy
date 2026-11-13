@@ -113,7 +113,10 @@ export default function App() {
     };
   }, []);
 
-  const requestIds = requestIdsRef.current;
+  // Navigate chronologically, independent of the current list sort. The list
+  // is newest-first by default, so using its order would make Prev move to a
+  // higher request ID.
+  const requestIds = [...requestIdsRef.current].sort((a, b) => a - b);
   const requestIndex = route.view === "request" ? requestIds.indexOf(route.id) : -1;
   const prevRequestId = requestIndex > 0 ? requestIds[requestIndex - 1] : undefined;
   const nextRequestId =

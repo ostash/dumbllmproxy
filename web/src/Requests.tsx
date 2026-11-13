@@ -7,10 +7,9 @@ import type { Facets, RequestSummary } from "./types";
 import {
   formatCost,
   formatDuration,
-  formatRelativeTime,
   formatTime,
-  formatTokens,
-  statusClass
+  formatTimestamp,
+  formatTokens
 } from "./format";
 import { TokenBreakdown } from "./TokenBreakdown";
 import { Pagination } from "./Pagination";
@@ -33,8 +32,6 @@ import { useDebouncedValue } from "./useDebouncedValue";
 
 const SORT_KEYS = ["started_at", "id", "status_code", "total_tokens", "cost_amount", "duration"] as const;
 type SortKey = (typeof SORT_KEYS)[number];
-
-const SLOW_SECONDS = 30;
 
 type Props = {
   initialParams: URLSearchParams;
@@ -60,10 +57,8 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(() => timeWindowParam(initialParams));
   const [failed, setFailed] = useState(() => boolParam(initialParams, "failed"));
   const [incomplete, setIncomplete] = useState(() => boolParam(initialParams, "incomplete"));
-  const [streamed, setStreamed] = useState(() => boolParam(initialParams, "streamed"));
   const [toolCalls, setToolCalls] = useState(() => boolParam(initialParams, "tool_calls"));
   const [unassigned, setUnassigned] = useState(() => boolParam(initialParams, "unassigned"));
-  const [slow, setSlow] = useState(() => boolParam(initialParams, "slow"));
   const [provider, setProvider] = useState(() => stringParam(initialParams, "provider"));
   const [model, setModel] = useState(() => stringParam(initialParams, "model"));
   const [harness, setHarness] = useState(() => stringParam(initialParams, "harness"));
@@ -102,10 +97,8 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
         q: debouncedFilter.trim() || undefined,
         status: failed ? "failed" : undefined,
         incomplete: incomplete || undefined,
-        streamed: streamed || undefined,
         tool_calls: toolCalls || undefined,
         unassigned: unassigned || undefined,
-        min_duration: slow ? SLOW_SECONDS : undefined,
         provider: debouncedProvider.trim() || undefined,
         model: debouncedModel.trim() || undefined,
         harness: debouncedHarness.trim() || undefined
@@ -129,7 +122,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     };
   }, [
     refreshKey, reloadKey, page, pageSize, since, sortKey, sortDir,
-    debouncedFilter, failed, incomplete, streamed, toolCalls, unassigned, slow,
+    debouncedFilter, failed, incomplete, toolCalls, unassigned,
     debouncedProvider, debouncedModel, debouncedHarness
   ]);
 
@@ -149,10 +142,8 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     if (filter.trim()) params.set("q", filter.trim());
     if (failed) params.set("failed", "1");
     if (incomplete) params.set("incomplete", "1");
-    if (streamed) params.set("streamed", "1");
     if (toolCalls) params.set("tool_calls", "1");
     if (unassigned) params.set("unassigned", "1");
-    if (slow) params.set("slow", "1");
     if (provider.trim()) params.set("provider", provider.trim());
     if (model.trim()) params.set("model", model.trim());
     if (harness.trim()) params.set("harness", harness.trim());
@@ -162,7 +153,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     onListHash(hash);
   }, [
     page, pageSize, timeWindow, sortKey, sortDir, filter,
-    failed, incomplete, streamed, toolCalls, unassigned, slow,
+    failed, incomplete, toolCalls, unassigned,
     provider, model, harness, onListHash
   ]);
 
@@ -193,7 +184,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
 
   const arrow = (key: SortKey) => (sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
   const activeFilterCount = [
-    filter.trim(), failed, incomplete, streamed, toolCalls, unassigned, slow,
+    filter.trim(), failed, incomplete, toolCalls, unassigned,
     provider.trim(), model.trim(), harness.trim()
   ].filter(Boolean).length;
 
@@ -201,10 +192,8 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     setFilter("");
     setFailed(false);
     setIncomplete(false);
-    setStreamed(false);
     setToolCalls(false);
     setUnassigned(false);
-    setSlow(false);
     setProvider("");
     setModel("");
     setHarness("");
@@ -244,10 +233,8 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
       <div className="quick-filters">
         <button className={`filter-chip ${failed ? "active" : ""}`} aria-pressed={failed} onClick={() => toggleFilter(setFailed)}>Failed</button>
         <button className={`filter-chip ${incomplete ? "active" : ""}`} aria-pressed={incomplete} onClick={() => toggleFilter(setIncomplete)}>Incomplete</button>
-        <button className={`filter-chip ${streamed ? "active" : ""}`} aria-pressed={streamed} onClick={() => toggleFilter(setStreamed)}>Streaming</button>
         <button className={`filter-chip ${toolCalls ? "active" : ""}`} aria-pressed={toolCalls} onClick={() => toggleFilter(setToolCalls)}>Tool calls</button>
         <button className={`filter-chip ${unassigned ? "active" : ""}`} aria-pressed={unassigned} onClick={() => toggleFilter(setUnassigned)} title="Conversation requests without a session">Unassigned</button>
-        <button className={`filter-chip ${slow ? "active" : ""}`} aria-pressed={slow} onClick={() => toggleFilter(setSlow)}>Slow &gt; {SLOW_SECONDS}s</button>
         <input
           className="filter small-filter"
           aria-label="Provider filter"
@@ -312,8 +299,8 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
             <table>
               <thead>
                 <tr>
+                  <th className="clickable" onClick={() => toggleSort("id")}>ID{arrow("id")}</th>
                   <th className="clickable" onClick={() => toggleSort("started_at")}>Time{arrow("started_at")}</th>
-                  <th className="clickable" onClick={() => toggleSort("id")}>Request{arrow("id")}</th>
                   <th>Session</th>
                   <th>Provider / model</th>
                   <th>Harness</th>
@@ -327,7 +314,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                 {requests.map((r) => (
                   <tr
                     key={r.id}
-                    className="clickable-row"
+                    className={`clickable-row${r.status_code !== 200 ? " row-error" : r.incomplete ? " row-incomplete" : ""}`}
                     tabIndex={0}
                     role="link"
                     onClick={() => onOpenRequest(r.id)}
@@ -338,16 +325,8 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                       }
                     }}
                   >
-                    <td className="nowrap" title={formatTime(r.started_at)}>{formatRelativeTime(r.started_at)}</td>
-                    <td>
-                      <div className="request-id">
-                        <span className={statusClass(r.status_code)}>{r.status_code || "ERR"}</span>
-                        <span>#{r.id}</span>
-                        {r.streamed && <span className="chip">streamed</span>}
-                        {r.incomplete && <span className="chip warn">incomplete</span>}
-                        {r.has_tool_calls && <span className="chip">tools</span>}
-                      </div>
-                    </td>
+                    <td className="request-number" title={`HTTP ${r.status_code || "ERR"}`}>#{r.id}</td>
+                    <td className="nowrap" title={formatTime(r.started_at)}>{formatTimestamp(r.started_at)}</td>
                     <td>
                       {r.session_key ? (
                         <div className="session-cell">
