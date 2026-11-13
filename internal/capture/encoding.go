@@ -98,62 +98,6 @@ func decodeDeflate(data []byte) ([]byte, error) {
 	return out, nil
 }
 
-// Decoder wraps r with the decoding implied by contentEncoding. The returned
-// reader must be closed.
-func Decoder(r io.Reader, contentEncoding string) (io.ReadCloser, error) {
-	encodings := splitEncodings(contentEncoding)
-	var rc io.ReadCloser = io.NopCloser(r)
-	for i := len(encodings) - 1; i >= 0; i-- {
-		switch encodings[i] {
-		case "", "identity":
-			continue
-		case "gzip", "x-gzip":
-			gr, err := gzip.NewReader(rc)
-			if err != nil {
-				_ = rc.Close()
-				return nil, fmt.Errorf("gzip: %w", err)
-			}
-			rc = &multiCloser{Reader: gr, closers: []io.Closer{gr, rc}}
-		case "deflate":
-			zr, err := zlib.NewReader(rc)
-			if err != nil {
-				_ = rc.Close()
-				return nil, fmt.Errorf("deflate: %w", err)
-			}
-			rc = &multiCloser{Reader: zr, closers: []io.Closer{zr, rc}}
-		case "br":
-			rc = &multiCloser{Reader: brotli.NewReader(rc), closers: []io.Closer{rc}}
-		case "zstd":
-			zr, err := zstd.NewReader(rc)
-			if err != nil {
-				_ = rc.Close()
-				return nil, fmt.Errorf("zstd: %w", err)
-			}
-			zrc := zr.IOReadCloser()
-			rc = &multiCloser{Reader: zrc, closers: []io.Closer{zrc, rc}}
-		default:
-			// Unknown encoding: expose the bytes as-is.
-			return rc, nil
-		}
-	}
-	return rc, nil
-}
-
-type multiCloser struct {
-	io.Reader
-	closers []io.Closer
-}
-
-func (m *multiCloser) Close() error {
-	var first error
-	for _, c := range m.closers {
-		if err := c.Close(); err != nil && first == nil {
-			first = err
-		}
-	}
-	return first
-}
-
 func splitEncodings(header string) []string {
 	if strings.TrimSpace(header) == "" {
 		return nil

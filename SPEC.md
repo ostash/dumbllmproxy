@@ -37,6 +37,20 @@ Provider-specific logic must stay outside the forwarding path. Parsing, stream r
 cost calculation happen alongside or after forwarding and must not alter the bytes, status, or headers sent to the
 harness.
 
+### HTTP framing and connection support
+
+- Listen over HTTP/1.1. Speak HTTP/1.1 or HTTP/2 to the upstream as negotiated by the HTTP client.
+- Buffer the complete request body before forwarding. Accept chunked request bodies and re-frame them with
+  `Content-Length`.
+- Accept `Expect: 100-continue` from the client and remove it before forwarding, because the proxy has already read the
+  body.
+- Forward `Content-Encoding` and the encoded bytes unchanged, including multiple and nested encodings.
+- Forward `text/event-stream` responses as they arrive.
+- Do not forward request or response trailers.
+- Do not forward informational responses other than the automatic `100 Continue` sent to the client when the body is
+  read.
+- Do not support connection upgrades or WebSocket. Reject requests that ask for an upgrade with `501 Not Implemented`.
+
 ### Request and response capture
 
 For each request, store:

@@ -51,6 +51,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if isUpgradeRequest(r) {
+		h.logger.Printf("rejected connection upgrade for %s", r.URL.Path)
+		http.Error(w, "connection upgrades are not supported", http.StatusNotImplemented)
+		return
+	}
 
 	startedAt := time.Now().UTC()
 	rawRequestBody, err := io.ReadAll(r.Body)
@@ -375,6 +380,27 @@ func isEventStream(contentType string) bool {
 
 func copyRequestHeaders(dst, src http.Header) {
 	copyEndToEndHeaders(dst, src)
+	// The body is already buffered, so the expectation has been satisfied by
+	// this proxy. Forwarding it would make the upstream wait for a 100 that is
+	// no longer needed.
+	dst.Del("Expect")
+}
+
+// isUpgradeRequest reports whether the client asked to switch protocols. The
+// proxy cannot tunnel an upgraded connection, so such requests are rejected
+// instead of being forwarded with the upgrade headers silently stripped.
+func isUpgradeRequest(r *http.Request) bool {
+	if r.Header.Get("Upgrade") != "" {
+		return true
+	}
+	for _, value := range r.Header.Values("Connection") {
+		for _, token := range strings.Split(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(token), "upgrade") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func copyResponseHeaders(dst, src http.Header) {

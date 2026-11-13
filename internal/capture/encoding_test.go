@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
-	"io"
 	"testing"
 
 	"github.com/andybalholm/brotli"
@@ -99,22 +98,6 @@ func zstdCompressed(t *testing.T, data []byte) []byte {
 func TestDecodeZstd(t *testing.T) {
 	input := []byte(`{"messages":[{"role":"user","content":"hi"}]}`)
 	out, err := Decode(zstdCompressed(t, input), "zstd")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(out, input) {
-		t.Fatalf("unexpected decoded data: %q", out)
-	}
-}
-
-func TestDecoderZstd(t *testing.T) {
-	input := []byte("streamed zstd body")
-	rc, err := Decoder(bytes.NewReader(zstdCompressed(t, input)), "zstd")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rc.Close()
-	out, err := io.ReadAll(rc)
 	if err != nil {
 		t.Fatal(err)
 	}

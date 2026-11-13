@@ -804,3 +804,224 @@ func TestProxyStoresEndpointRelativeToPrefix(t *testing.T) {
 		t.Fatalf("unexpected endpoint: %q", detail.Endpoint)
 	}
 }
+
+func TestProxyChunkedRequestBody(t *testing.T) {
+	const reqBody = `{"model":"m","messages":[{"role":"user","content":"hi"}]}`
+	var (
+		gotBody          []byte
+		gotContentLength int64
+	)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		gotContentLength = r.ContentLength
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"model":"m","choices":[],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	_, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	pr, pw := io.Pipe()
+	go func() {
+		_, _ = pw.Write([]byte(reqBody))
+		_ = pw.Close()
+	}()
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", pr)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Session-Id", "chunked")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if string(gotBody) != reqBody {
+		t.Fatalf("upstream body mismatch: %q", gotBody)
+	}
+	if gotContentLength != int64(len(reqBody)) {
+		t.Fatalf("expected re-framed content length %d, got %d", len(reqBody), gotContentLength)
+	}
+}
+
+func TestProxyStripsExpectHeader(t *testing.T) {
+	var gotExpect string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotExpect = r.Header.Get("Expect")
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"model":"m","choices":[],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	_, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Expect", "100-continue")
+	req.Header.Set("X-Session-Id", "expect")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if gotExpect != "" {
+		t.Fatalf("Expect header was forwarded: %q", gotExpect)
+	}
+}
+
+func TestProxyCompressedRequestPassThroughAndDecodedStorage(t *testing.T) {
+	const reqJSON = `{"model":"m","messages":[{"role":"user","content":"hi"}]}`
+	var compressed bytes.Buffer
+	gw := gzip.NewWriter(&compressed)
+	_, _ = gw.Write([]byte(reqJSON))
+	_ = gw.Close()
+
+	var (
+		gotBody     []byte
+		gotEncoding string
+	)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		gotEncoding = r.Header.Get("Content-Encoding")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"model":"m","choices":[],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions",
+		bytes.NewReader(compressed.Bytes()))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("X-Session-Id", "gzip-request")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if !bytes.Equal(gotBody, compressed.Bytes()) {
+		t.Fatalf("compressed request bytes were changed in transit")
+	}
+	if gotEncoding != "gzip" {
+		t.Fatalf("content encoding not preserved: %q", gotEncoding)
+	}
+
+	reqs := waitForRequests(t, st, waitForSessionID(t, st))
+	detail, err := st.GetRequest(context.Background(), reqs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.RequestBody != reqJSON {
+		t.Fatalf("stored request body was not decoded: %q", detail.RequestBody)
+	}
+}
+
+func TestProxyNestedResponseEncoding(t *testing.T) {
+	const respJSON = `{"id":"c1","object":"chat.completion","model":"m","choices":[],"usage":{}}`
+	var gzipped bytes.Buffer
+	gw := gzip.NewWriter(&gzipped)
+	_, _ = gw.Write([]byte(respJSON))
+	_ = gw.Close()
+	var nested bytes.Buffer
+	zw, err := zstd.NewWriter(&nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = zw.Write(gzipped.Bytes())
+	_ = zw.Close()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Encoding", "gzip, zstd")
+		_, _ = w.Write(nested.Bytes())
+	}))
+	defer upstream.Close()
+
+	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Session-Id", "nested")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if !bytes.Equal(raw, nested.Bytes()) {
+		t.Fatalf("compressed response bytes were changed in transit")
+	}
+	if resp.Header.Get("Content-Encoding") != "gzip, zstd" {
+		t.Fatalf("content encoding not preserved: %q", resp.Header.Get("Content-Encoding"))
+	}
+
+	reqs := waitForRequests(t, st, waitForSessionID(t, st))
+	detail, err := st.GetRequest(context.Background(), reqs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.ResponseBody != respJSON {
+		t.Fatalf("stored response body was not decoded: %q", detail.ResponseBody)
+	}
+}
+
+func TestProxyDropsRequestTrailers(t *testing.T) {
+	var gotTrailer http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		gotTrailer = r.Trailer.Clone()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"model":"m","choices":[],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	_, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	pr, pw := io.Pipe()
+	go func() {
+		_, _ = pw.Write([]byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+		_ = pw.Close()
+	}()
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", pr)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Session-Id", "trailer")
+	req.Trailer = http.Header{"X-Checksum": []string{"abc"}}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if len(gotTrailer) != 0 {
+		t.Fatalf("trailers were forwarded: %#v", gotTrailer)
+	}
+}
+
+func TestProxyRejectsUpgradeRequests(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be called for an upgrade request")
+	}))
+	defer upstream.Close()
+
+	_, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	req, _ := http.NewRequest(http.MethodGet, proxySrv.URL+"/open/v1/models", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotImplemented {
+		t.Fatalf("expected 501, got %d", resp.StatusCode)
+	}
+}
