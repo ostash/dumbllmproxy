@@ -19,7 +19,8 @@ var conversationOutputKeys = []string{"choices", "output"}
 
 // IsConversationRequest reports whether a captured exchange is a model
 // generation rather than auxiliary traffic such as model listings, presets or
-// health checks. Only conversation requests are grouped into sessions.
+// health checks. Only conversation requests are stored; auxiliary traffic is
+// discarded after classification.
 func IsConversationRequest(requestBody, responseBody []byte) bool {
 	if hasNonEmptyField(requestBody, conversationInputKeys) {
 		return true

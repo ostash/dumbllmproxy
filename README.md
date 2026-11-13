@@ -17,9 +17,8 @@ local web UI for inspecting conversations and HTTP exchanges.
 - Paginated Sessions and Requests lists (50/100/200 rows) with rolling time filters from the last hour through the last
   year.
 - Server-side search across the whole result set, plus quick filters for failed responses, incomplete captures,
-  streaming, tool calls, unassigned conversation requests, auxiliary traffic, slow requests, and a specific provider,
-  model, or harness. Unassigned and auxiliary are disjoint. Provider/model/harness inputs suggest known values. Active
-  filters can be cleared in one click.
+  streaming, tool calls, unassigned conversation requests, slow requests, and a specific provider, model, or harness.
+  Provider/model/harness inputs suggest known values. Active filters can be cleared in one click.
 - Pagination with first/last and a direct page jump.
 - Sortable request duration and a "slow requests" filter.
 - Session-level failed/incomplete counts and filters.
@@ -130,6 +129,9 @@ Stored per HTTP exchange:
 
 Compressed request/response bytes are forwarded unchanged to preserve normal client/upstream behaviour; a decoded copy
 is stored for inspection and parsing.
+
+Auxiliary traffic (model listings, presets, health checks) is classified at capture time and not stored. It never
+appears in the Requests view and never joins a session.
 
 Hop-by-hop headers are not forwarded in either direction: `Connection` and every header it names (case-insensitively,
 across multiple `Connection` lines), plus the standard hop-by-hop set. Ordinary end-to-end headers and repeated values

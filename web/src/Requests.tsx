@@ -63,7 +63,6 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
   const [streamed, setStreamed] = useState(() => boolParam(initialParams, "streamed"));
   const [toolCalls, setToolCalls] = useState(() => boolParam(initialParams, "tool_calls"));
   const [unassigned, setUnassigned] = useState(() => boolParam(initialParams, "unassigned"));
-  const [auxiliary, setAuxiliary] = useState(() => boolParam(initialParams, "auxiliary"));
   const [slow, setSlow] = useState(() => boolParam(initialParams, "slow"));
   const [provider, setProvider] = useState(() => stringParam(initialParams, "provider"));
   const [model, setModel] = useState(() => stringParam(initialParams, "model"));
@@ -106,7 +105,6 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
         streamed: streamed || undefined,
         tool_calls: toolCalls || undefined,
         unassigned: unassigned || undefined,
-        conversation: auxiliary ? false : undefined,
         min_duration: slow ? SLOW_SECONDS : undefined,
         provider: debouncedProvider.trim() || undefined,
         model: debouncedModel.trim() || undefined,
@@ -131,7 +129,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     };
   }, [
     refreshKey, reloadKey, page, pageSize, since, sortKey, sortDir,
-    debouncedFilter, failed, incomplete, streamed, toolCalls, unassigned, auxiliary, slow,
+    debouncedFilter, failed, incomplete, streamed, toolCalls, unassigned, slow,
     debouncedProvider, debouncedModel, debouncedHarness
   ]);
 
@@ -154,7 +152,6 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     if (streamed) params.set("streamed", "1");
     if (toolCalls) params.set("tool_calls", "1");
     if (unassigned) params.set("unassigned", "1");
-    if (auxiliary) params.set("auxiliary", "1");
     if (slow) params.set("slow", "1");
     if (provider.trim()) params.set("provider", provider.trim());
     if (model.trim()) params.set("model", model.trim());
@@ -165,7 +162,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     onListHash(hash);
   }, [
     page, pageSize, timeWindow, sortKey, sortDir, filter,
-    failed, incomplete, streamed, toolCalls, unassigned, auxiliary, slow,
+    failed, incomplete, streamed, toolCalls, unassigned, slow,
     provider, model, harness, onListHash
   ]);
 
@@ -196,7 +193,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
 
   const arrow = (key: SortKey) => (sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
   const activeFilterCount = [
-    filter.trim(), failed, incomplete, streamed, toolCalls, unassigned, auxiliary, slow,
+    filter.trim(), failed, incomplete, streamed, toolCalls, unassigned, slow,
     provider.trim(), model.trim(), harness.trim()
   ].filter(Boolean).length;
 
@@ -207,7 +204,6 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     setStreamed(false);
     setToolCalls(false);
     setUnassigned(false);
-    setAuxiliary(false);
     setSlow(false);
     setProvider("");
     setModel("");
@@ -251,7 +247,6 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
         <button className={`filter-chip ${streamed ? "active" : ""}`} aria-pressed={streamed} onClick={() => toggleFilter(setStreamed)}>Streaming</button>
         <button className={`filter-chip ${toolCalls ? "active" : ""}`} aria-pressed={toolCalls} onClick={() => toggleFilter(setToolCalls)}>Tool calls</button>
         <button className={`filter-chip ${unassigned ? "active" : ""}`} aria-pressed={unassigned} onClick={() => toggleFilter(setUnassigned)} title="Conversation requests without a session">Unassigned</button>
-        <button className={`filter-chip ${auxiliary ? "active" : ""}`} aria-pressed={auxiliary} onClick={() => toggleFilter(setAuxiliary)} title="Model listings, presets and other non-generation traffic">Auxiliary</button>
         <button className={`filter-chip ${slow ? "active" : ""}`} aria-pressed={slow} onClick={() => toggleFilter(setSlow)}>Slow &gt; {SLOW_SECONDS}s</button>
         <input
           className="filter small-filter"
@@ -351,7 +346,6 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                         {r.streamed && <span className="chip">streamed</span>}
                         {r.incomplete && <span className="chip warn">incomplete</span>}
                         {r.has_tool_calls && <span className="chip">tools</span>}
-                        {!r.is_conversation && <span className="chip muted-chip">auxiliary</span>}
                       </div>
                     </td>
                     <td>

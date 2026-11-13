@@ -54,13 +54,13 @@ func TestSessionSummaryCountsReportedUsageAndCost(t *testing.T) {
 	providerCost := 0.25
 	records := []*RequestRecord{
 		{
-			SessionKey: "s1", Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/x",
+			SessionKey: "s1", StartedAt: now, Method: "POST", Endpoint: "/x",
 			Provider: "p", StatusCode: 200,
 			UsageJSON: usageJSON, InputTokens: ptr(10), OutputTokens: ptr(5),
 			TotalTokens: ptr(15), ProviderCost: &providerCost,
 		},
 		{
-			SessionKey: "s1", Conversation: true, StartedAt: now.Add(time.Second), Method: "POST", Endpoint: "/y",
+			SessionKey: "s1", StartedAt: now.Add(time.Second), Method: "POST", Endpoint: "/y",
 			Provider: "p", StatusCode: 200,
 		},
 	}

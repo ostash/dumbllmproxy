@@ -82,9 +82,6 @@ type RequestRecord struct {
 	Streamed     bool
 	Incomplete   bool
 	HasToolCalls bool
-	// Conversation marks a model generation. Auxiliary traffic (model
-	// listings, presets, health checks) is captured but never joins a session.
-	Conversation bool
 	Parser       string
 	ParseError   string
 
@@ -147,7 +144,6 @@ type RequestSummary struct {
 	Streamed          bool     `json:"streamed"`
 	Incomplete        bool     `json:"incomplete"`
 	HasToolCalls      bool     `json:"has_tool_calls"`
-	Conversation      bool     `json:"is_conversation"`
 	Parser            string   `json:"parser"`
 	ParseError        string   `json:"parse_error,omitempty"`
 	InputTokens       *int64   `json:"input_tokens,omitempty"`
@@ -196,7 +192,6 @@ type ListOptions struct {
 	Incomplete   *bool
 	Streamed     *bool
 	HasToolCalls *bool
-	Conversation *bool
 	Unassigned   *bool
 	Provider     string
 	Model        string
@@ -264,13 +259,7 @@ func (s *Store) SaveRequest(ctx context.Context, rec *RequestRecord) (int64, err
 	}
 	defer tx.Rollback()
 
-	// Auxiliary traffic never joins a session, even when the client sent a
-	// session header. The header value is not kept as a session fact either, so
-	// the request cannot appear to belong to a session it is not part of.
 	sessionKey, sessionHeader := rec.SessionKey, rec.SessionHeader
-	if !rec.Conversation {
-		sessionKey, sessionHeader = "", ""
-	}
 
 	var sessionID *int64
 	if strings.TrimSpace(sessionKey) != "" {
@@ -296,17 +285,17 @@ func (s *Store) SaveRequest(ctx context.Context, rec *RequestRecord) (int64, err
 			method, endpoint, provider, model, status_code,
 			request_content_type, response_content_type, metadata_json,
 			request_body, response_body, raw_response_body,
-			streamed, incomplete, has_tool_calls, conversation, parser, parse_error, usage_json, pricing,
+			streamed, incomplete, has_tool_calls, parser, parse_error, usage_json, pricing,
 			input_tokens, output_tokens, cached_input_tokens, cache_read_tokens,
 			cache_write_tokens, reasoning_tokens, total_tokens,
 			provider_cost
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sessionID, nullString(sessionKey), nullString(sessionHeader),
 		formatTime(rec.StartedAt), nullTime(rec.CompletedAt),
 		rec.Method, rec.Endpoint, rec.Provider, nullString(rec.Model), rec.StatusCode,
 		nullString(rec.RequestContentType), nullString(rec.ResponseContentType), nullString(rec.MetadataJSON),
 		requestBody, responseBody, rawResponseBody,
-		boolInt(rec.Streamed), boolInt(rec.Incomplete), boolInt(rec.HasToolCalls), boolInt(rec.Conversation), rec.Parser, nullString(rec.ParseError), nullString(rec.UsageJSON),
+		boolInt(rec.Streamed), boolInt(rec.Incomplete), boolInt(rec.HasToolCalls), rec.Parser, nullString(rec.ParseError), nullString(rec.UsageJSON),
 		nullString(rec.Pricing),
 		rec.InputTokens, rec.OutputTokens, rec.CachedInputTokens, rec.CacheReadTokens,
 		rec.CacheWriteTokens, rec.ReasoningTokens, rec.TotalTokens,
@@ -617,13 +606,9 @@ func matchesRequestFilters(req RequestSummary, opts ListOptions) bool {
 	if opts.HasToolCalls != nil && req.HasToolCalls != *opts.HasToolCalls {
 		return false
 	}
-	if opts.Conversation != nil && req.Conversation != *opts.Conversation {
-		return false
-	}
-	// Unassigned means an unassigned conversation request, matching the
-	// Unassigned group in the Sessions view. Auxiliary traffic is never in a
-	// session, so counting it here would make the two filters overlap.
-	if opts.Unassigned != nil && (req.SessionID == nil && req.Conversation) != *opts.Unassigned {
+	// Unassigned means a conversation request without a session. All stored
+	// requests are conversation requests; auxiliary traffic is not stored.
+	if opts.Unassigned != nil && (req.SessionID == nil) != *opts.Unassigned {
 		return false
 	}
 	if opts.Provider != "" && !strings.EqualFold(req.Provider, opts.Provider) {
@@ -764,7 +749,7 @@ const requestSummarySelect = `
 	SELECT id, session_id, COALESCE(session_key, ''), COALESCE(session_header, ''),
 	       started_at, COALESCE(completed_at, ''), method, endpoint,
 	       COALESCE(provider, ''), COALESCE(model, ''), status_code,
-	       streamed, incomplete, has_tool_calls, conversation, parser, COALESCE(parse_error, ''),
+	       streamed, incomplete, has_tool_calls, parser, COALESCE(parse_error, ''),
 	       input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, total_tokens,
 	       COALESCE(pricing, ''), provider_cost, COALESCE(usage_json, ''),
 	       COALESCE(metadata_json, '')
@@ -924,7 +909,7 @@ func (s *Store) GetRequest(ctx context.Context, id int64) (*RequestDetail, error
 		SELECT id, session_id, COALESCE(session_key, ''), COALESCE(session_header, ''),
 		       started_at, COALESCE(completed_at, ''), method, endpoint,
 		       COALESCE(provider, ''), COALESCE(model, ''), status_code,
-		       streamed, incomplete, has_tool_calls, conversation, COALESCE(parser, ''), COALESCE(parse_error, ''),
+		       streamed, incomplete, has_tool_calls, COALESCE(parser, ''), COALESCE(parse_error, ''),
 		       input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, total_tokens,
 		       COALESCE(pricing, ''), provider_cost,
 		       COALESCE(request_content_type, ''), COALESCE(response_content_type, ''),
@@ -951,7 +936,7 @@ func (s *Store) GetRequest(ctx context.Context, id int64) (*RequestDetail, error
 		&d.ID, &sessionID, &d.SessionKey, &d.SessionHeader,
 		&d.StartedAt, &d.CompletedAt, &d.Method, &d.Endpoint,
 		&d.Provider, &d.Model, &d.StatusCode,
-		&d.Streamed, &d.Incomplete, &d.HasToolCalls, &d.Conversation, &d.Parser, &d.ParseError,
+		&d.Streamed, &d.Incomplete, &d.HasToolCalls, &d.Parser, &d.ParseError,
 		&inputTokens, &outputTokens, &cachedInput, &reasoning, &totalTokens,
 		&d.Pricing, &providerCost,
 		&d.RequestContentType, &d.ResponseContentType,
@@ -1016,7 +1001,7 @@ func (s *Store) scanRequestSummary(row rowScanner) (RequestSummary, error) {
 	err := row.Scan(&r.ID, &sessionID, &r.SessionKey, &r.SessionHeader,
 		&r.StartedAt, &r.CompletedAt, &r.Method, &r.Endpoint,
 		&r.Provider, &r.Model, &r.StatusCode,
-		&r.Streamed, &r.Incomplete, &r.HasToolCalls, &r.Conversation, &r.Parser, &r.ParseError,
+		&r.Streamed, &r.Incomplete, &r.HasToolCalls, &r.Parser, &r.ParseError,
 		&inputTokens, &outputTokens, &cachedInput, &reasoning, &totalTokens,
 		&r.Pricing, &providerCost, &usageJSON, &metadataJSON)
 	if err != nil {

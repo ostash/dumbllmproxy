@@ -51,7 +51,6 @@ func TestAPIAndStatic(t *testing.T) {
 	id, err := st.SaveRequest(context.Background(), &store.RequestRecord{
 		SessionKey:    "session-a",
 		SessionHeader: "X-Session-Id",
-		Conversation:  true,
 		StartedAt:     started,
 		CompletedAt:   &completed,
 		Method:        "POST",
@@ -192,13 +191,10 @@ func TestAPIAndStatic(t *testing.T) {
 	if len(reqDetail.Conversation.Roots) == 0 {
 		t.Fatal("expected request conversation roots")
 	}
-	// The conversation kind and the conversation tree must not share a JSON key.
+	// The conversation tree is a JSON object, not a boolean kind.
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(detailBody, &raw); err != nil {
 		t.Fatal(err)
-	}
-	if string(raw["is_conversation"]) != "true" {
-		t.Fatalf("expected is_conversation=true, got %s", raw["is_conversation"])
 	}
 	if len(raw["conversation"]) == 0 || raw["conversation"][0] != '{' {
 		t.Fatalf("expected conversation tree object, got %s", raw["conversation"])

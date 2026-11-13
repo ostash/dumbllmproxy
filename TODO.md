@@ -7,8 +7,6 @@ The database still grows roughly quadratically because every request stores the 
 - Store only the messages a request adds, plus a reference to the request it extends, and reconstruct the full body on
   read. This turns quadratic history storage into linear unique-message storage. Bigger change, and it conflicts with
   storing the raw body verbatim, so decide whether a raw copy is still needed.
-- Do not store bodies for auxiliary requests (model listings, presets), or truncate them. They are rarely useful and add
-  noise.
 
 ## SQL offload
 
@@ -59,17 +57,12 @@ beyond list views; the items below are instances of the same direction.
 - **Unassigned as a forest of conversations.** The tree builder already separates unrelated requests into distinct
   roots. A dedicated view could show one card per root (request count, tokens, cost, time range) instead of a single
   aggregate. Approaches not decided yet.
-- **Auxiliary capture control.** Optional `ignore_paths` (do not capture) or `auxiliary_paths` (capture but never
-  session) config, so model listings and presets can be kept out of the database entirely.
-- **Facets and auxiliary traffic.** `/api/facets` currently includes providers and models seen only in auxiliary
-  requests. Decide whether filter suggestions should be limited to conversation requests.
 
 ## Data and configuration
 
 - Fill in the real DeepSeek rates and holidays in `config.yaml`. The example rates are placeholders (`0.00`).
-- Document the one-time database migration for existing databases: add the `conversation` column, backfill it from the
-  request and response bodies, and unlink auxiliary requests from sessions. The project intentionally has no migration
-  code.
+- Document the one-time database migration for existing databases: delete auxiliary requests and drop the
+  `conversation` column. The project intentionally has no migration code.
 
 ## Housekeeping
 

@@ -29,7 +29,6 @@ var schema = []string{
 		streamed INTEGER NOT NULL DEFAULT 0,
 		incomplete INTEGER NOT NULL DEFAULT 0,
 		has_tool_calls INTEGER NOT NULL DEFAULT 0,
-		conversation INTEGER NOT NULL DEFAULT 0,
 		parser TEXT,
 		parse_error TEXT,
 		pricing TEXT,

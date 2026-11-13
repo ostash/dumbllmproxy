@@ -210,6 +210,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		parseErrors = append(parseErrors, streamParseError)
 	}
 
+	// Auxiliary traffic (model listings, presets, health checks) is not stored.
+	// It is classified here, after the response is available, and discarded.
+	if !openai.IsConversationRequest(storedRequestBody, responseBody) {
+		return
+	}
+
 	captured := h.capture(up, storedRequestBody, responseBody, startedAt)
 	if rawResponseBody != nil {
 		captured.RawResponseBody = rawResponseBody
@@ -236,7 +242,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Streamed:            streamed,
 		Incomplete:          captured.Incomplete,
 		HasToolCalls:        captured.HasToolCalls,
-		Conversation:        openai.IsConversationRequest(storedRequestBody, responseBody),
 		Parser:              up.Parser,
 		Pricing:             up.Pricing,
 		ParseError:          captured.ParseError,
@@ -328,6 +333,10 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.Upstre
 	completed := time.Now().UTC()
 	body := []byte("upstream request failed: " + cause.Error())
 	h.logger.Printf("upstream request failed for %s: %v", r.URL.Path, cause)
+	if !openai.IsConversationRequest(storedRequestBody, nil) {
+		http.Error(w, "upstream request failed", http.StatusBadGateway)
+		return
+	}
 	parseErrors = append(parseErrors, "upstream: "+cause.Error())
 	rec := &store.RequestRecord{
 		SessionKey:         sessionKey,
@@ -343,7 +352,6 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.Upstre
 		MetadataJSON:       marshalJSON(metadata),
 		RequestBody:        storedRequestBody,
 		ResponseBody:       body,
-		Conversation:       openai.IsConversationRequest(storedRequestBody, nil),
 		Parser:             up.Parser,
 		Pricing:            up.Pricing,
 		ParseError:         strings.Join(parseErrors, "; "),

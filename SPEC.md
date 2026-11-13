@@ -121,16 +121,16 @@ them:
 - If no identifier is available, keep the request accessible as unassigned. Unassigned requests are not a session:
   unrelated requests must not be aggregated into a pseudo-session or reconstructed as one conversation.
 
-Only conversation requests join sessions. Classify each captured exchange as either a **conversation** request or
+Only conversation requests are stored. Classify each captured exchange as either a **conversation** request or
 **auxiliary** traffic:
 
 - A conversation request carries model input: a non-empty `messages`, `input`, `prompt`, or `contents` field in its
   request body, or a generation response with a non-empty `choices` or `output` field.
 - Everything else is auxiliary: model listings, presets, health checks, and similar metadata calls.
 
-Auxiliary traffic is still captured and inspectable, but it never joins a session, even when the client sent a session
-header. Its session identifier is not recorded, so it cannot appear to belong to a session it is not part of. This keeps
-the unassigned set limited to real generations that lack a session identifier.
+Auxiliary traffic is classified at capture time and discarded. It is not stored, so it cannot appear in the Requests
+view or join a session, even when the client sent a session header. This keeps the stored data limited to real
+generations and the unassigned set limited to generations that lack a session identifier.
 
 ## Usage and cost
 
@@ -259,7 +259,7 @@ one-click reset, including from the empty state.
 
 Conversation requests without a session identifier must remain inspectable through the Requests view's **Unassigned**
 filter, reachable directly from the top navigation. They are not listed as a session, because unrelated requests do not
-form a conversation and their combined totals would be meaningless. Auxiliary traffic is excluded from that filter.
+form a conversation and their combined totals would be meaningless.
 
 ### Requests view
 
@@ -276,17 +276,14 @@ Show:
 - Method and endpoint (provider plus the client path relative to the upstream prefix).
 - Request duration, derived from start and completion timestamps, sortable and filterable (for example, slow requests).
 - Token usage and cost, when available.
-- An auxiliary marker for non-generation traffic.
 
 Allow filtering and sorting, including sorting by freshly calculated cost. Use the same page sizes and rolling time
 windows as the Sessions view. Selecting a request opens the request inspector.
 
 Search must cover the whole result set, not just the current page. Match request ID, session identifier, provider,
 model, harness, method, path, and status. Provide quick filters for failed responses, incomplete captures, streaming
-responses, requests with tool calls, unassigned conversation requests, auxiliary traffic, slow requests, and a specific
-provider, model, or harness. Provider, model, and harness inputs should suggest known values. The unassigned and
-auxiliary filters are disjoint: unassigned means a conversation request without a session, auxiliary means
-non-generation traffic.
+responses, requests with tool calls, unassigned conversation requests, slow requests, and a specific provider, model,
+or harness. Provider, model, and harness inputs should suggest known values.
 
 Assigned sessions must be reachable from the request row without losing the row's own click target.
 
@@ -367,6 +364,8 @@ Store:
 - Configured session/metadata header values.
 - The configured pricing name per request, as a capture fact.
 - Provider-reported cost, when the provider reports one.
+
+Do not store auxiliary traffic (model listings, presets, health checks). It is classified at capture time and discarded.
 
 Do not persist calculated costs, cost explanations, or pricing snapshots; they are derived at read time.
 

@@ -244,11 +244,10 @@ func parseListOptions(r *http.Request, defaultSort string, allowedSorts map[stri
 		return opts, fmt.Errorf("invalid status")
 	}
 	for name, target := range map[string]**bool{
-		"incomplete":   &opts.Incomplete,
-		"streamed":     &opts.Streamed,
-		"tool_calls":   &opts.HasToolCalls,
-		"conversation": &opts.Conversation,
-		"unassigned":   &opts.Unassigned,
+		"incomplete": &opts.Incomplete,
+		"streamed":   &opts.Streamed,
+		"tool_calls": &opts.HasToolCalls,
+		"unassigned": &opts.Unassigned,
 	} {
 		value, err := parseBoolParam(q.Get(name))
 		if err != nil {

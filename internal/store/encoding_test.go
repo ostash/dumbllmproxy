@@ -134,7 +134,7 @@ func TestStoreCompressesBodiesAndReadsOldRows(t *testing.T) {
 	now := time.Now().UTC()
 	body := []byte(`{"model":"m","messages":[{"role":"user","content":"` + strings.Repeat("x", 2000) + `"}]}`)
 	rec := &RequestRecord{
-		SessionKey: "s1", Conversation: true, StartedAt: now, Method: "POST", Endpoint: "/x",
+		SessionKey: "s1", StartedAt: now, Method: "POST", Endpoint: "/x",
 		Provider: "p", StatusCode: 200,
 		Parser: "openai_chat", RequestBody: body, ResponseBody: body,
 	}

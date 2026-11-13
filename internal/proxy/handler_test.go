@@ -405,7 +405,7 @@ func TestProxyUnassignedRequest(t *testing.T) {
 	}
 }
 
-func TestProxyAuxiliaryRequestNeverJoinsSession(t *testing.T) {
+func TestProxyAuxiliaryRequestIsNotStored(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{"data":[{"id":"model-a"}]}`)
@@ -422,23 +422,15 @@ func TestProxyAuxiliaryRequestNeverJoinsSession(t *testing.T) {
 	io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	deadline := time.Now().Add(3 * time.Second)
-	var reqs []store.RequestSummary
-	for time.Now().Before(deadline) {
-		reqs, err = st.ListAllRequests(context.Background())
-		if err == nil && len(reqs) > 0 {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
+	// The handler saves synchronously; give it a moment to finish.
+	time.Sleep(100 * time.Millisecond)
+
+	reqs, err := st.ListAllRequests(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(reqs) != 1 {
-		t.Fatalf("expected one captured request, got %d", len(reqs))
-	}
-	if reqs[0].Conversation {
-		t.Fatal("model listing must not be classified as a conversation")
-	}
-	if reqs[0].SessionID != nil || reqs[0].SessionKey != "" {
-		t.Fatalf("auxiliary request joined a session: id=%v key=%q", reqs[0].SessionID, reqs[0].SessionKey)
+	if len(reqs) != 0 {
+		t.Fatalf("auxiliary request was stored: %#v", reqs)
 	}
 	sessions, err := st.ListSessions(context.Background())
 	if err != nil {
