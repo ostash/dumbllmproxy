@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -19,8 +20,22 @@ type Config struct {
 	Proxy           ProxyConfig      `yaml:"proxy"`
 	Upstreams       []UpstreamConfig `yaml:"upstreams"`
 	SessionHeaders  []string         `yaml:"session_headers"`
+	HarnessHeaders  []string         `yaml:"harness_headers"`
 	MetadataHeaders []string         `yaml:"metadata_headers"`
 	Pricing         PricingConfig    `yaml:"pricing"`
+
+	metadataMatchers []HeaderMatcher
+}
+
+// HeaderMatcher matches a header by exact name or by regular expression.
+type HeaderMatcher struct {
+	Name    string
+	Pattern *regexp.Regexp
+}
+
+// MetadataHeaderMatchers returns the compiled metadata header matchers.
+func (c *Config) MetadataHeaderMatchers() []HeaderMatcher {
+	return c.metadataMatchers
 }
 
 type ProxyConfig struct {
@@ -129,6 +144,9 @@ func (c *Config) SetDefaults() {
 	for i := range c.SessionHeaders {
 		c.SessionHeaders[i] = strings.TrimSpace(c.SessionHeaders[i])
 	}
+	for i := range c.HarnessHeaders {
+		c.HarnessHeaders[i] = strings.TrimSpace(c.HarnessHeaders[i])
+	}
 	for i := range c.MetadataHeaders {
 		c.MetadataHeaders[i] = strings.TrimSpace(c.MetadataHeaders[i])
 	}
@@ -217,7 +235,36 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
+	matchers, err := compileHeaderMatchers(c.MetadataHeaders)
+	if err != nil {
+		return err
+	}
+	c.metadataMatchers = matchers
 	return nil
+}
+
+func compileHeaderMatchers(entries []string) ([]HeaderMatcher, error) {
+	out := make([]HeaderMatcher, 0, len(entries))
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(entry), "re:") {
+			pattern := strings.TrimSpace(entry[3:])
+			if pattern == "" {
+				return nil, fmt.Errorf("metadata_headers regex must not be empty")
+			}
+			re, err := regexp.Compile("(?i)" + pattern)
+			if err != nil {
+				return nil, fmt.Errorf("metadata_headers regex %q: %w", pattern, err)
+			}
+			out = append(out, HeaderMatcher{Pattern: re})
+			continue
+		}
+		out = append(out, HeaderMatcher{Name: entry})
+	}
+	return out, nil
 }
 
 // MatchUpstream returns the longest matching upstream for a request path.

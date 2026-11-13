@@ -215,7 +215,7 @@ export function RequestInspector({
                 <dt>Provider</dt><dd>{detail.provider || "—"}</dd>
                 <dt>Model</dt><dd>{detail.model || "—"}</dd>
                 <dt>Harness</dt><dd>{detail.harness || "—"}</dd>
-                <dt>Session</dt><dd>{detail.session_key || "unassigned"}{detail.session_header ? ` (${detail.session_header})` : ""}</dd>
+                <dt>Session</dt><dd>{detail.session_key || "unassigned"}</dd>
                 <dt>Started</dt><dd>{formatTime(detail.started_at)}</dd>
                 <dt>Completed</dt><dd>{formatTime(detail.completed_at)}</dd>
                 <dt>Duration</dt><dd>{formatDuration(detail.started_at, detail.completed_at)}</dd>

@@ -234,8 +234,8 @@ func TestFacetsAndHarnessFilter(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	for _, rec := range []*store.RequestRecord{
-		{SessionKey: "s1", StartedAt: now, Method: "POST", Endpoint: "/a", Provider: "openrouter", Model: "model-b", StatusCode: 200, MetadataJSON: `{"request.X-Harness-Id":"pi"}`},
-		{SessionKey: "s2", StartedAt: now, Method: "POST", Endpoint: "/b", Provider: "deepseek", Model: "model-a", StatusCode: 200, MetadataJSON: `{"request.X-Harness-Id":"claude"}`},
+		{SessionKey: "s1", StartedAt: now, Method: "POST", Endpoint: "/a", Provider: "openrouter", Model: "model-b", StatusCode: 200, Harness: "pi"},
+		{SessionKey: "s2", StartedAt: now, Method: "POST", Endpoint: "/b", Provider: "deepseek", Model: "model-a", StatusCode: 200, Harness: "claude"},
 	} {
 		if _, err := st.SaveRequest(ctx, rec); err != nil {
 			t.Fatal(err)

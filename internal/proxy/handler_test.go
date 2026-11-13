@@ -40,8 +40,14 @@ func newTestProxy(t *testing.T, baseURL, parser, pricingName string) (*store.Sto
 			Pricing: pricingName,
 		}},
 		SessionHeaders:  []string{"x-session-id", "x-conversation-id"},
+		HarnessHeaders:  []string{"x-harness-id", "x-openrouter-title", "user-agent"},
 		MetadataHeaders: []string{"x-harness-id"},
 	}
+	return newTestProxyWithConfig(t, cfg)
+}
+
+func newTestProxyWithConfig(t *testing.T, cfg *config.Config) (*store.Store, *httptest.Server) {
+	t.Helper()
 	cfg.SetDefaults()
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("invalid test config: %v", err)
@@ -151,9 +157,6 @@ func TestProxyNonStreamingAndOpenRouterCost(t *testing.T) {
 	}
 	if r.CostAmount == nil || *r.CostAmount != 0.0042 || r.CostSource != "openrouter_reported" {
 		t.Fatalf("unexpected cost: %#v", r)
-	}
-	if r.SessionHeader != "X-Session-Id" {
-		t.Fatalf("unexpected session header: %q", r.SessionHeader)
 	}
 	if r.CachedInputTokens == nil || *r.CachedInputTokens != 2 {
 		t.Fatalf("request cached tokens not extracted: %#v", r.CachedInputTokens)
@@ -654,9 +657,141 @@ func TestProxySessionHeaderFallbackOrder(t *testing.T) {
 	if len(sessions) != 1 || sessions[0].SessionKey != "conv-fallback" {
 		t.Fatalf("unexpected sessions: %#v", sessions)
 	}
+}
+
+func TestProxyHarnessDetection(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"model":"m","choices":[],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Proxy: config.ProxyConfig{Listen: "127.0.0.1:0", Database: filepath.Join(t.TempDir(), "test.db")},
+		Upstreams: []config.UpstreamConfig{{
+			Name: "test-upstream", Prefix: "/open", BaseURL: upstream.URL, Parser: "openai_chat", Pricing: "none",
+		}},
+		SessionHeaders:  []string{"x-session-id"},
+		HarnessHeaders:  []string{"x-harness-id", "x-openrouter-title", "user-agent"},
+		MetadataHeaders: []string{"x-request-id"},
+	}
+	st, proxySrv := newTestProxyWithConfig(t, cfg)
+
+	count := 0
+	send := func(headers map[string]string) store.RequestSummary {
+		t.Helper()
+		count++
+		req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions",
+			strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Session-Id", "harness-session")
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			reqs, err := st.ListAllRequests(context.Background())
+			if err == nil && len(reqs) >= count {
+				return reqs[0]
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("timed out waiting for %d requests", count)
+		return store.RequestSummary{}
+	}
+
+	first := send(map[string]string{
+		"X-Harness-Id":       "harness-9",
+		"X-Openrouter-Title": "Title Agent",
+		"User-Agent":         "pi/1.5.2 (linux; node/v26.12.1; x64)",
+		"X-Request-Id":       "req-1",
+	})
+	if first.Harness != "harness-9" {
+		t.Fatalf("expected first harness header to win, got %q", first.Harness)
+	}
+	detail, err := st.GetRequest(context.Background(), first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(detail.MetadataJSON, "req-1") {
+		t.Fatalf("metadata header missing: %s", detail.MetadataJSON)
+	}
+	if strings.Contains(detail.MetadataJSON, "harness-9") {
+		t.Fatalf("detection header leaked into metadata: %s", detail.MetadataJSON)
+	}
+
+	ua := send(map[string]string{"User-Agent": "pi/1.5.2 (linux; node/v26.12.1; x64)"})
+	if ua.Harness != "pi" {
+		t.Fatalf("expected user-agent product token, got %q", ua.Harness)
+	}
+
+	title := send(map[string]string{"X-Openrouter-Title": "Title Agent"})
+	if title.Harness != "Title Agent" {
+		t.Fatalf("expected openrouter title, got %q", title.Harness)
+	}
+}
+
+func TestProxyMetadataHeaderRegex(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Trace-Response", "resp-1")
+		io.WriteString(w, `{"model":"m","choices":[],"usage":{}}`)
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Proxy: config.ProxyConfig{Listen: "127.0.0.1:0", Database: filepath.Join(t.TempDir(), "test.db")},
+		Upstreams: []config.UpstreamConfig{{
+			Name: "test-upstream", Prefix: "/open", BaseURL: upstream.URL, Parser: "openai_chat", Pricing: "none",
+		}},
+		SessionHeaders:  []string{"x-session-id"},
+		MetadataHeaders: []string{"x-request-id", "re:^x-trace-"},
+	}
+	st, proxySrv := newTestProxyWithConfig(t, cfg)
+
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Session-Id", "regex-session")
+	req.Header.Set("X-Request-Id", "req-1")
+	req.Header.Set("X-Trace-Id", "trace-1")
+	req.Header.Set("X-Trace-Span", "span-1")
+	req.Header.Set("X-Other", "nope")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	sessions, err := st.ListSessions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 	reqs := waitForRequests(t, st, sessions[0].ID)
-	if reqs[0].SessionHeader != "X-Conversation-Id" {
-		t.Fatalf("unexpected session header: %q", reqs[0].SessionHeader)
+	detail, err := st.GetRequest(context.Background(), reqs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal([]byte(detail.MetadataJSON), &metadata); err != nil {
+		t.Fatalf("metadata is not JSON: %v (%s)", err, detail.MetadataJSON)
+	}
+	want := map[string]any{
+		"request.X-Request-Id":      "req-1",
+		"request.X-Trace-Id":        "trace-1",
+		"request.X-Trace-Span":      "span-1",
+		"response.X-Trace-Response": "resp-1",
+	}
+	if !reflect.DeepEqual(metadata, want) {
+		t.Fatalf("unexpected metadata: %#v", metadata)
 	}
 }
 
@@ -740,9 +875,6 @@ func TestProxyPersistsOnlyAllowlistedHeaders(t *testing.T) {
 	reqs := waitForRequests(t, st, sessions[0].ID)
 	if len(reqs) != 1 {
 		t.Fatalf("expected one request, got %d", len(reqs))
-	}
-	if reqs[0].SessionHeader != "X-Session-Id" {
-		t.Fatalf("unexpected session header: %q", reqs[0].SessionHeader)
 	}
 	detail, err := st.GetRequest(context.Background(), reqs[0].ID)
 	if err != nil {

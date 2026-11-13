@@ -110,3 +110,41 @@ func TestValidateRejectsDuplicateNames(t *testing.T) {
 		t.Fatal("expected validation error for duplicate names")
 	}
 }
+
+func TestMetadataHeaderMatchers(t *testing.T) {
+	cfg := &Config{
+		Proxy: ProxyConfig{Listen: "127.0.0.1:0", Database: "x.db"},
+		Upstreams: []UpstreamConfig{{
+			Name: "x", Prefix: "/x", BaseURL: "https://example.com", Parser: "none", Pricing: "none",
+		}},
+		MetadataHeaders: []string{"x-request-id", "re:^x-trace-"},
+	}
+	cfg.SetDefaults()
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	matchers := cfg.MetadataHeaderMatchers()
+	if len(matchers) != 2 {
+		t.Fatalf("expected 2 matchers, got %d", len(matchers))
+	}
+	if matchers[0].Pattern != nil || matchers[0].Name != "x-request-id" {
+		t.Fatalf("unexpected exact matcher: %#v", matchers[0])
+	}
+	if matchers[1].Pattern == nil || !matchers[1].Pattern.MatchString("X-Trace-Id") {
+		t.Fatalf("unexpected regex matcher: %#v", matchers[1])
+	}
+}
+
+func TestValidateRejectsBadMetadataRegex(t *testing.T) {
+	cfg := &Config{
+		Proxy: ProxyConfig{Listen: "127.0.0.1:0", Database: "x.db"},
+		Upstreams: []UpstreamConfig{{
+			Name: "x", Prefix: "/x", BaseURL: "https://example.com", Parser: "none", Pricing: "none",
+		}},
+		MetadataHeaders: []string{"re:["},
+	}
+	cfg.SetDefaults()
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}

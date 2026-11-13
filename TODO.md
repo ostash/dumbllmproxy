@@ -61,8 +61,6 @@ beyond list views; the items below are instances of the same direction.
 ## Data and configuration
 
 - Fill in the real DeepSeek rates and holidays in `config.yaml`. The example rates are placeholders (`0.00`).
-- Document the one-time database migration for existing databases: delete auxiliary requests and drop the
-  `conversation` column. The project intentionally has no migration code.
 
 ## Housekeeping
 

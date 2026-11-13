@@ -60,10 +60,10 @@ func (s *Store) resolveCost(f CostFacts) Cost {
 }
 
 type RequestRecord struct {
-	SessionKey    string
-	SessionHeader string
-	StartedAt     time.Time
-	CompletedAt   *time.Time
+	SessionKey  string
+	Harness     string
+	StartedAt   time.Time
+	CompletedAt *time.Time
 
 	Method     string
 	Endpoint   string
@@ -131,7 +131,6 @@ type RequestSummary struct {
 	ID                int64    `json:"id"`
 	SessionID         *int64   `json:"session_id,omitempty"`
 	SessionKey        string   `json:"session_key"`
-	SessionHeader     string   `json:"session_header,omitempty"`
 	StartedAt         string   `json:"started_at"`
 	CompletedAt       string   `json:"completed_at,omitempty"`
 	Method            string   `json:"method"`
@@ -257,7 +256,7 @@ func (s *Store) SaveRequest(ctx context.Context, rec *RequestRecord) (int64, err
 	}
 	defer tx.Rollback()
 
-	sessionKey, sessionHeader := rec.SessionKey, rec.SessionHeader
+	sessionKey := rec.SessionKey
 
 	var sessionID *int64
 	if strings.TrimSpace(sessionKey) != "" {
@@ -279,7 +278,7 @@ func (s *Store) SaveRequest(ctx context.Context, rec *RequestRecord) (int64, err
 
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO requests (
-			session_id, session_key, session_header, started_at, completed_at,
+			session_id, session_key, harness, started_at, completed_at,
 			method, endpoint, provider, model, status_code,
 			request_content_type, response_content_type, metadata_json,
 			request_body, response_body, raw_response_body,
@@ -288,7 +287,7 @@ func (s *Store) SaveRequest(ctx context.Context, rec *RequestRecord) (int64, err
 			cache_write_tokens, reasoning_tokens, total_tokens,
 			provider_cost
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		sessionID, nullString(sessionKey), nullString(sessionHeader),
+		sessionID, nullString(sessionKey), nullString(rec.Harness),
 		formatTime(rec.StartedAt), nullTime(rec.CompletedAt),
 		rec.Method, rec.Endpoint, rec.Provider, nullString(rec.Model), rec.StatusCode,
 		nullString(rec.RequestContentType), nullString(rec.ResponseContentType), nullString(rec.MetadataJSON),
@@ -356,29 +355,23 @@ func (s *Store) Facets(ctx context.Context) (Facets, error) {
 	rows.Close()
 
 	rows, err = s.db.QueryContext(ctx,
-		`SELECT metadata_json FROM requests WHERE metadata_json IS NOT NULL`)
+		`SELECT DISTINCT harness FROM requests WHERE harness IS NOT NULL AND harness != '' ORDER BY harness`)
 	if err != nil {
 		return out, err
 	}
-	harnesses := map[string]bool{}
 	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
+		var harness string
+		if err := rows.Scan(&harness); err != nil {
 			rows.Close()
 			return out, err
 		}
-		if harness := harnessFromMetadata(raw); harness != "" {
-			harnesses[harness] = true
-		}
+		out.Harnesses = append(out.Harnesses, harness)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
 		return out, err
 	}
 	rows.Close()
-	for harness := range harnesses {
-		out.Harnesses = append(out.Harnesses, harness)
-	}
 	sort.Strings(out.Harnesses)
 	return out, nil
 }
@@ -735,13 +728,12 @@ func (s *Store) GetSession(ctx context.Context, id int64) (*SessionSummary, erro
 }
 
 const requestSummarySelect = `
-	SELECT id, session_id, COALESCE(session_key, ''), COALESCE(session_header, ''),
+	SELECT id, session_id, COALESCE(session_key, ''), COALESCE(harness, ''),
 	       started_at, COALESCE(completed_at, ''), method, endpoint,
 	       COALESCE(provider, ''), COALESCE(model, ''), status_code,
 	       streamed, incomplete, has_tool_calls, parser, COALESCE(parse_error, ''),
 	       input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, total_tokens,
-	       COALESCE(pricing, ''), provider_cost, COALESCE(usage_json, ''),
-	       COALESCE(metadata_json, '')
+	       COALESCE(pricing, ''), provider_cost, COALESCE(usage_json, '')
 	FROM requests`
 
 func (s *Store) ListRequests(ctx context.Context, sessionID int64) ([]RequestSummary, error) {
@@ -895,7 +887,7 @@ func (s *Store) ListRequestsForTree(ctx context.Context, sessionID int64) ([]Req
 
 func (s *Store) GetRequest(ctx context.Context, id int64) (*RequestDetail, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, session_id, COALESCE(session_key, ''), COALESCE(session_header, ''),
+		SELECT id, session_id, COALESCE(session_key, ''), COALESCE(harness, ''),
 		       started_at, COALESCE(completed_at, ''), method, endpoint,
 		       COALESCE(provider, ''), COALESCE(model, ''), status_code,
 		       streamed, incomplete, has_tool_calls, COALESCE(parser, ''), COALESCE(parse_error, ''),
@@ -922,7 +914,7 @@ func (s *Store) GetRequest(ctx context.Context, id int64) (*RequestDetail, error
 		providerCost      sql.NullFloat64
 	)
 	err := row.Scan(
-		&d.ID, &sessionID, &d.SessionKey, &d.SessionHeader,
+		&d.ID, &sessionID, &d.SessionKey, &d.Harness,
 		&d.StartedAt, &d.CompletedAt, &d.Method, &d.Endpoint,
 		&d.Provider, &d.Model, &d.StatusCode,
 		&d.Streamed, &d.Incomplete, &d.HasToolCalls, &d.Parser, &d.ParseError,
@@ -943,7 +935,6 @@ func (s *Store) GetRequest(ctx context.Context, id int64) (*RequestDetail, error
 	d.InputTokens = intPtr(inputTokens)
 	d.OutputTokens = intPtr(outputTokens)
 	d.TotalTokens = intPtr(totalTokens)
-	d.Harness = harnessFromMetadata(d.MetadataJSON)
 	d.CachedInputTokens = intPtr(cachedInput)
 	d.CacheReadTokens = intPtr(cacheRead)
 	d.CacheWriteTokens = intPtr(cacheWrite)
@@ -985,14 +976,13 @@ func (s *Store) scanRequestSummary(row rowScanner) (RequestSummary, error) {
 		totalTokens  sql.NullInt64
 		providerCost sql.NullFloat64
 		usageJSON    string
-		metadataJSON sql.NullString
 	)
-	err := row.Scan(&r.ID, &sessionID, &r.SessionKey, &r.SessionHeader,
+	err := row.Scan(&r.ID, &sessionID, &r.SessionKey, &r.Harness,
 		&r.StartedAt, &r.CompletedAt, &r.Method, &r.Endpoint,
 		&r.Provider, &r.Model, &r.StatusCode,
 		&r.Streamed, &r.Incomplete, &r.HasToolCalls, &r.Parser, &r.ParseError,
 		&inputTokens, &outputTokens, &cachedInput, &reasoning, &totalTokens,
-		&r.Pricing, &providerCost, &usageJSON, &metadataJSON)
+		&r.Pricing, &providerCost, &usageJSON)
 	if err != nil {
 		return r, err
 	}
@@ -1005,7 +995,6 @@ func (s *Store) scanRequestSummary(row rowScanner) (RequestSummary, error) {
 	r.CachedInputTokens = intPtr(cachedInput)
 	r.ReasoningTokens = intPtr(reasoning)
 	r.TotalTokens = intPtr(totalTokens)
-	r.Harness = harnessFromMetadata(metadataJSON.String)
 	cost := s.resolveCost(CostFacts{
 		Pricing:      r.Pricing,
 		Model:        r.Model,
@@ -1070,50 +1059,6 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
-}
-
-func harnessFromMetadata(raw string) string {
-	if strings.TrimSpace(raw) == "" {
-		return ""
-	}
-	var metadata map[string]any
-	if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
-		return ""
-	}
-	for key, value := range metadata {
-		if strings.EqualFold(key, "request.X-Harness-Id") {
-			if s, ok := value.(string); ok && strings.TrimSpace(s) != "" {
-				return strings.TrimSpace(s)
-			}
-		}
-	}
-	for key, value := range metadata {
-		if strings.EqualFold(key, "request.X-Openrouter-Title") {
-			if s, ok := value.(string); ok && strings.TrimSpace(s) != "" {
-				return strings.TrimSpace(s)
-			}
-		}
-	}
-	for key, value := range metadata {
-		if strings.EqualFold(key, "request.User-Agent") {
-			if s, ok := value.(string); ok {
-				return harnessFromUserAgent(s)
-			}
-		}
-	}
-	return ""
-}
-
-func harnessFromUserAgent(ua string) string {
-	fields := strings.Fields(strings.TrimSpace(ua))
-	if len(fields) == 0 {
-		return ""
-	}
-	name := fields[0]
-	if i := strings.IndexByte(name, '/'); i > 0 {
-		name = name[:i]
-	}
-	return name
 }
 
 func boolInt(v bool) int {

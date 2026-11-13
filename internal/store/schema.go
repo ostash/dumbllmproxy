@@ -12,7 +12,7 @@ var schema = []string{
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
 		session_key TEXT,
-		session_header TEXT,
+		harness TEXT,
 		started_at TEXT NOT NULL,
 		completed_at TEXT,
 		method TEXT NOT NULL,

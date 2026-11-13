@@ -11,7 +11,7 @@ local web UI for inspecting conversations and HTTP exchanges.
 - Transparent streaming passthrough, with final OpenAI Chat Completions stream reconstruction. No SSE event log is
   stored.
 - Raw decoded fallback for unknown stream formats or failed reconstruction.
-- Session grouping via configurable request headers.
+- Session grouping and harness detection via configurable request headers.
 - Separate Sessions and Requests views; requests can be browsed as individual generations without session grouping.
   Opening a request shows its reconstructed conversation with turns, tool calls and tool results.
 - Paginated Sessions and Requests lists (50/100/200 rows) with rolling time filters from the last hour through the last
@@ -121,11 +121,12 @@ Stored per HTTP exchange:
 - Reconstructed final JSON for recognized OpenAI Chat Completions streams.
 - Raw decoded stream fallback when a stream is unknown, malformed, or incomplete.
 - Token usage and cost data when available.
-- Session identifier and the source header name.
-- Harness name derived from the configured `x-harness-id` metadata header, then `x-openrouter-title`, then the
-  User-Agent product token (for example `pi/1.5.0` → `pi`).
-- Configured metadata headers only. Full headers are not stored. There is no built-in sensitive-header list: whatever
-  you configure is what gets stored.
+- Session identifier and harness name.
+- Harness name from the configured `harness_headers` list, first present wins; `user-agent` is reduced to its product
+  token (for example `pi/1.5.0` → `pi`).
+- Configured metadata headers only. Metadata capture is independent of session and harness detection. Entries are exact
+  header names or `re:`-prefixed regular expressions. Full headers are not stored. There is no built-in sensitive-header
+  list: whatever you configure is what gets stored.
 
 Compressed request/response bytes are forwarded unchanged to preserve normal client/upstream behaviour; a decoded copy
 is stored for inspection and parsing.
@@ -161,9 +162,37 @@ session_headers:
   - x-conversation-id
 ```
 
-The first present non-empty header wins. The identifier and header name are stored. Requests without a session header
-are not a session: they are reachable through the **Unassigned** filter in the Requests view (also linked from the top
-navigation), because unrelated requests do not form a conversation.
+The first present non-empty header wins. The identifier is stored; the header name is not. Requests without a session
+header are not a session: they are reachable through the **Unassigned** filter in the Requests view (also linked from
+the top navigation), because unrelated requests do not form a conversation.
+
+## Harness
+
+Configure an ordered list of harness headers:
+
+```yaml
+harness_headers:
+  - x-harness-id
+  - x-openrouter-title
+  - user-agent
+```
+
+The first present non-empty header wins. The extracted value is stored; the header is not. `user-agent` is reduced to
+its product token (`pi/1.5.2 (linux; …)` → `pi`).
+
+## Metadata headers
+
+`metadata_headers` captures additional request and response headers for inspection. It is independent of session and
+harness detection. Entries are exact header names or `re:`-prefixed regular expressions matched case-insensitively
+against the header name:
+
+```yaml
+metadata_headers:
+  - x-request-id
+  - "re:^x-trace-"
+```
+
+Any header can be listed, including credentials; that is the user's responsibility. Full headers are not stored.
 
 ## Provider fields used
 
@@ -225,7 +254,7 @@ See `config.example.yaml`. Key sections:
   UI)
 - `parser`: `openai_chat` or `none`
 - `pricing`: `openrouter`, `deepseek`, or `none`
-- `session_headers`, `metadata_headers`
+- `session_headers`, `harness_headers`, `metadata_headers`
 - `pricing.deepseek`: unit, schedule/holiday timezones, holidays, and per-model rates with optional conditions
 
 ## Tests

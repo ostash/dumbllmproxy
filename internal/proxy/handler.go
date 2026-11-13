@@ -78,8 +78,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	model := openai.ExtractModel(storedRequestBody)
-	sessionKey, sessionHeader := h.session(r.Header)
-	metadata := extractHeaders(r.Header, h.cfg.MetadataHeaders, "request")
+	sessionKey := h.session(r.Header)
+	harness := h.harness(r.Header)
+	metadata := extractHeaders(r.Header, h.cfg.MetadataHeaderMatchers(), "request")
 	parseErrors := []string{}
 	if reqDecodeErr != nil {
 		parseErrors = append(parseErrors, "request decode: "+reqDecodeErr.Error())
@@ -87,13 +88,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	targetURL, err := up.TargetURL(r.URL)
 	if err != nil {
-		h.fail(w, r, up, startedAt, storedRequestBody, model, sessionKey, sessionHeader, metadata, err, parseErrors)
+		h.fail(w, r, up, startedAt, storedRequestBody, model, sessionKey, harness, metadata, err, parseErrors)
 		return
 	}
 
 	upReq, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL.String(), bytes.NewReader(rawRequestBody))
 	if err != nil {
-		h.fail(w, r, up, startedAt, storedRequestBody, model, sessionKey, sessionHeader, metadata, err, parseErrors)
+		h.fail(w, r, up, startedAt, storedRequestBody, model, sessionKey, harness, metadata, err, parseErrors)
 		return
 	}
 	copyRequestHeaders(upReq.Header, r.Header)
@@ -101,12 +102,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.client.Do(upReq)
 	if err != nil {
-		h.fail(w, r, up, startedAt, storedRequestBody, model, sessionKey, sessionHeader, metadata, err, parseErrors)
+		h.fail(w, r, up, startedAt, storedRequestBody, model, sessionKey, harness, metadata, err, parseErrors)
 		return
 	}
 	defer resp.Body.Close()
 
-	addHeaderMetadata(metadata, resp.Header, h.cfg.MetadataHeaders, "response")
+	addHeaderMetadata(metadata, resp.Header, h.cfg.MetadataHeaderMatchers(), "response")
 	copyResponseHeaders(w.Header(), resp.Header)
 
 	streamed := isEventStream(resp.Header.Get("Content-Type"))
@@ -230,7 +231,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	rec := &store.RequestRecord{
 		SessionKey:          sessionKey,
-		SessionHeader:       sessionHeader,
+		Harness:             harness,
 		StartedAt:           startedAt,
 		CompletedAt:         completedAt,
 		Method:              r.Method,
@@ -297,16 +298,45 @@ func (h *Handler) capture(up *config.UpstreamConfig, requestBody, responseBody [
 	return result
 }
 
-func (h *Handler) session(header http.Header) (string, string) {
+func (h *Handler) session(header http.Header) string {
 	for _, name := range h.cfg.SessionHeaders {
 		if name == "" {
 			continue
 		}
 		if value := strings.TrimSpace(header.Get(name)); value != "" {
-			return value, http.CanonicalHeaderKey(name)
+			return value
 		}
 	}
-	return "", ""
+	return ""
+}
+
+func (h *Handler) harness(header http.Header) string {
+	for _, name := range h.cfg.HarnessHeaders {
+		if name == "" {
+			continue
+		}
+		value := strings.TrimSpace(header.Get(name))
+		if value == "" {
+			continue
+		}
+		if strings.EqualFold(name, "user-agent") {
+			return harnessFromUserAgent(value)
+		}
+		return value
+	}
+	return ""
+}
+
+func harnessFromUserAgent(ua string) string {
+	fields := strings.Fields(strings.TrimSpace(ua))
+	if len(fields) == 0 {
+		return ""
+	}
+	name := fields[0]
+	if i := strings.IndexByte(name, '/'); i > 0 {
+		name = name[:i]
+	}
+	return name
 }
 
 // requestEndpoint returns the client path relative to the matched upstream
@@ -334,7 +364,7 @@ func (h *Handler) save(rec *store.RequestRecord) {
 	}
 }
 
-func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.UpstreamConfig, startedAt time.Time, storedRequestBody []byte, model, sessionKey, sessionHeader string, metadata map[string]any, cause error, parseErrors []string) {
+func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.UpstreamConfig, startedAt time.Time, storedRequestBody []byte, model, sessionKey, harness string, metadata map[string]any, cause error, parseErrors []string) {
 	completed := time.Now().UTC()
 	body := []byte("upstream request failed: " + cause.Error())
 	h.logger.Printf("upstream request failed for %s: %v", r.URL.Path, cause)
@@ -345,7 +375,7 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.Upstre
 	parseErrors = append(parseErrors, "upstream: "+cause.Error())
 	rec := &store.RequestRecord{
 		SessionKey:         sessionKey,
-		SessionHeader:      sessionHeader,
+		Harness:            harness,
 		StartedAt:          startedAt,
 		CompletedAt:        &completed,
 		Method:             r.Method,
@@ -365,23 +395,31 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.Upstre
 	http.Error(w, "upstream request failed", http.StatusBadGateway)
 }
 
-func extractHeaders(header http.Header, names []string, prefix string) map[string]any {
+func extractHeaders(header http.Header, matchers []config.HeaderMatcher, prefix string) map[string]any {
 	out := map[string]any{}
-	for _, name := range names {
-		if name == "" {
+	for _, m := range matchers {
+		if m.Pattern != nil {
+			for name, values := range header {
+				if m.Pattern.MatchString(name) {
+					out[prefix+"."+http.CanonicalHeaderKey(name)] = strings.Join(values, ", ")
+				}
+			}
 			continue
 		}
-		values := header.Values(name)
+		if m.Name == "" {
+			continue
+		}
+		values := header.Values(m.Name)
 		if len(values) == 0 {
 			continue
 		}
-		out[prefix+"."+http.CanonicalHeaderKey(name)] = strings.Join(values, ", ")
+		out[prefix+"."+http.CanonicalHeaderKey(m.Name)] = strings.Join(values, ", ")
 	}
 	return out
 }
 
-func addHeaderMetadata(dst map[string]any, header http.Header, names []string, prefix string) {
-	for k, v := range extractHeaders(header, names, prefix) {
+func addHeaderMetadata(dst map[string]any, header http.Header, matchers []config.HeaderMatcher, prefix string) {
+	for k, v := range extractHeaders(header, matchers, prefix) {
 		dst[k] = v
 	}
 }

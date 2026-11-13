@@ -172,7 +172,7 @@ function HTTPTab({ detail }: { detail: RequestDetail }) {
           <dt>Model</dt><dd>{detail.model || "—"}</dd>
           <dt>Harness</dt><dd>{detail.harness || "—"}</dd>
           <dt>Parser</dt><dd>{detail.parser || "—"}</dd>
-          <dt>Session</dt><dd>{detail.session_key || "—"}{detail.session_header ? ` (${detail.session_header})` : ""}</dd>
+          <dt>Session</dt><dd>{detail.session_key || "—"}</dd>
           <dt>Request content type</dt><dd>{detail.request_content_type || "—"}</dd>
           <dt>Response content type</dt><dd>{detail.response_content_type || "—"}</dd>
           <dt>Streamed</dt><dd>{detail.streamed ? "yes" : "no"}</dd>

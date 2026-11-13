@@ -31,7 +31,6 @@ export type RequestSummary = {
   id: number;
   session_id?: number;
   session_key: string;
-  session_header?: string;
   started_at: string;
   completed_at?: string;
   method: string;

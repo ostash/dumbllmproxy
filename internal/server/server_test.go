@@ -49,21 +49,20 @@ func TestAPIAndStatic(t *testing.T) {
 	respBody := `{"id":"r1","object":"chat.completion","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}`
 	providerCost := 0.01
 	id, err := st.SaveRequest(context.Background(), &store.RequestRecord{
-		SessionKey:    "session-a",
-		SessionHeader: "X-Session-Id",
-		StartedAt:     started,
-		CompletedAt:   &completed,
-		Method:        "POST",
-		Endpoint:      "/open/v1/chat/completions",
-		Provider:      "test",
-		Model:         "m",
-		StatusCode:    200,
-		RequestBody:   []byte(reqBody),
-		ResponseBody:  []byte(respBody),
-		Parser:        "openai_chat",
-		Pricing:       "openrouter",
-		TotalTokens:   int64Ptr(6),
-		ProviderCost:  &providerCost,
+		SessionKey:   "session-a",
+		StartedAt:    started,
+		CompletedAt:  &completed,
+		Method:       "POST",
+		Endpoint:     "/open/v1/chat/completions",
+		Provider:     "test",
+		Model:        "m",
+		StatusCode:   200,
+		RequestBody:  []byte(reqBody),
+		ResponseBody: []byte(respBody),
+		Parser:       "openai_chat",
+		Pricing:      "openrouter",
+		TotalTokens:  int64Ptr(6),
+		ProviderCost: &providerCost,
 	})
 	if err != nil {
 		t.Fatal(err)

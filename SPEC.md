@@ -107,7 +107,7 @@ content types are treated as non-streaming and buffered before forwarding.
 Non-streaming requests should be forwarded normally and their complete decoded responses stored. The proxy must not
 change the behaviour expected by the harness merely to simplify logging.
 
-## Session identification
+## Session and harness identification
 
 Group requests into sessions so an agent conversation can be inspected together.
 
@@ -116,10 +116,13 @@ them:
 
 - Do not require a custom harness plugin or assume one universal session header.
 - The first configured header with a present, non-empty value wins.
-- Preserve the extracted identifier and the header name it came from.
+- Store the extracted identifier. Do not store the header name or value.
 - Do not use routing or affinity headers as session identifiers by default.
 - If no identifier is available, keep the request accessible as unassigned. Unassigned requests are not a session:
   unrelated requests must not be aggregated into a pseudo-session or reconstructed as one conversation.
+
+Harness identification uses a separate ordered list of headers. The first present non-empty value wins. The extracted
+value is stored; the header is not. When the matched header is `user-agent`, reduce the value to its product token.
 
 Only conversation requests are stored. Classify each captured exchange as either a **conversation** request or
 **auxiliary** traffic:
@@ -271,8 +274,7 @@ Show:
 - Request ID, with non-200 responses highlighted in red and incomplete captures highlighted in yellow.
 - Session identifier, or an unassigned marker.
 - Provider and model.
-- Harness name, when it can be derived from configured metadata headers. Prefer `x-harness-id`, then OpenRouter's
-  `X-OpenRouter-Title`, then the User-Agent product token.
+- Harness name, from the configured harness header list (first present wins).
 - Method and endpoint (provider plus the client path relative to the upstream prefix).
 - Request duration, derived from start and completion timestamps, sortable.
 - Token usage and cost, when available.
@@ -360,7 +362,7 @@ Store:
 - Sessions.
 - Requests and responses.
 - Extracted metadata and usage.
-- Configured session/metadata header values.
+- Extracted session identifier and harness name; configured metadata header values.
 - The configured pricing name per request, as a capture fact.
 - Provider-reported cost, when the provider reports one.
 
@@ -378,7 +380,8 @@ Avoid unnecessary duplication:
 - Store a raw stream fallback only when reconstruction is incomplete, malformed, or unsupported.
 - Do not store individual SSE events.
 
-Do not store full request/response headers. Only configured session and metadata headers are stored.
+Do not store full request/response headers. Only the extracted session identifier, the extracted harness name, and
+configured metadata headers are stored.
 
 The application must work locally without an external database or cloud service.
 
@@ -392,8 +395,9 @@ Configure:
 - Listening address and port.
 - SQLite database path.
 - Upstream prefixes, base URLs, parser selections, and pricing selections.
-- Session header mappings in priority order.
-- A metadata header extraction list applied to both requests and responses.
+- Session and harness header mappings in priority order.
+- A metadata header extraction list applied to both requests and responses, independent of session and harness
+  detection. Entries are exact header names or `re:`-prefixed regular expressions.
 - Provider-specific usage extraction and pricing.
 - Time zone and holidays used for pricing.
 - Rate unit.
@@ -464,9 +468,10 @@ The application is useful when:
 - Incomplete recognized streams are marked incomplete and retain a single raw decoded fallback; unrecognized streams are
   retained as one raw fallback.
 - Full logical requests and final responses can be inspected.
-- Full header sets are not stored; only configured session/metadata headers are extracted.
-- Requests are grouped into sessions using ordered, configurable headers. Unassigned requests are reachable through the
-  Requests view and are never aggregated into a pseudo-session.
+- Full header sets are not stored; only the extracted session identifier, the extracted harness name, and configured
+  metadata headers are stored.
+- Requests are grouped into sessions and assigned a harness using ordered, configurable headers. Unassigned requests
+  are reachable through the Requests view and are never aggregated into a pseudo-session.
 - A session can be inspected through both a readable conversation tree and an HTTP request timeline, and individual
   requests can be browsed without session grouping.
 - Conversation elements can be traced to their source request and to all requests where they occur.

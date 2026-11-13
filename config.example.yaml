@@ -29,19 +29,28 @@ upstreams:
   #   parser: none
   #   pricing: none
 
-# First present header wins. The identifier and the header it came from are
-# stored with the request.
+# Session detection. First present header wins. The extracted identifier is
+# stored; the header name and value are not.
 session_headers:
   - x-session-id
   - x-conversation-id
   - x-claude-code-session-id
 
-# These headers are copied into request metadata for inspection. Full headers
-# are intentionally not stored.
-metadata_headers:
+# Harness detection. First present header wins. The extracted value is stored;
+# the header is not. `user-agent` is reduced to its product token.
+harness_headers:
   - x-harness-id
   - x-openrouter-title
   - user-agent
+
+# Additional headers to capture for inspection. This is independent of session
+# and harness detection. Entries are exact header names, or `re:` followed by a
+# regular expression matched case-insensitively against the header name. Any
+# header can be listed, including credentials; that is the user's
+# responsibility. Full headers are not stored.
+metadata_headers:
+  - x-request-id
+  - "re:^x-trace-"
 
 pricing:
   # OpenRouter uses the provider-reported usage.cost field. No pricing table is

@@ -10,28 +10,6 @@ import (
 	"time"
 )
 
-func TestHarnessFromMetadata(t *testing.T) {
-	cases := []struct {
-		name string
-		raw  string
-		want string
-	}{
-		{"explicit", `{"request.X-Harness-Id":"pi","request.User-Agent":"curl/8.0"}`, "pi"},
-		{"openrouter-title", `{"request.X-Openrouter-Title":"Pi Coding Agent","request.User-Agent":"curl/8.0"}`, "Pi Coding Agent"},
-		{"user-agent", `{"request.User-Agent":"pi/1.5.0 (linux; node/v26.12.1; x64)"}`, "pi"},
-		{"curl", `{"request.User-Agent":"curl/8.23.0"}`, "curl"},
-		{"none", `{}`, ""},
-		{"invalid", `not json`, ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := harnessFromMetadata(tc.raw); got != tc.want {
-				t.Fatalf("harnessFromMetadata(%q) = %q, want %q", tc.raw, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestSessionSummaryCountsReportedUsageAndCost(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.db")
 	s, err := Open(path)
