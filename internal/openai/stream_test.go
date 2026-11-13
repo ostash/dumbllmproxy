@@ -4,6 +4,7 @@
 package openai
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -169,5 +170,168 @@ func TestStreamReconstructorReasoningDetails(t *testing.T) {
 	detail := details[0].(map[string]any)
 	if detail["type"] != "reasoning.text" || detail["text"] != "think more" {
 		t.Fatalf("unexpected reasoning details: %#v", detail)
+	}
+}
+
+func TestStreamReconstructorNoFinalNewline(t *testing.T) {
+	stream := `data: {"choices":[{"index":0,"delta":{"content":"x"}}]}` + "\n\n" + `data: [DONE]`
+	r := NewStreamReconstructor()
+	r.Feed([]byte(stream))
+	raw, complete, err := r.Finish()
+	if err != nil {
+		t.Fatalf("Finish() error: %v", err)
+	}
+	if !complete {
+		t.Fatal("expected complete stream")
+	}
+	if !strings.Contains(string(raw), `"x"`) {
+		t.Fatalf("missing content: %s", raw)
+	}
+}
+
+func TestStreamReconstructorEOFMidEvent(t *testing.T) {
+	stream := `data: {"choices":[{"index":0,"delta":{"content":"x"}}]}`
+	r := NewStreamReconstructor()
+	r.Feed([]byte(stream))
+	raw, complete, err := r.Finish()
+	if err != nil {
+		t.Fatalf("Finish() error: %v", err)
+	}
+	if complete {
+		t.Fatal("expected incomplete stream without [DONE]")
+	}
+	if !strings.Contains(string(raw), `"x"`) {
+		t.Fatalf("missing content: %s", raw)
+	}
+}
+
+func TestStreamReconstructorMultipleDataLines(t *testing.T) {
+	stream := "data: {\"choices\":[\ndata: {\"index\":0,\"delta\":{\"content\":\"x\"}}]}\n\ndata: [DONE]\n\n"
+	r := NewStreamReconstructor()
+	r.Feed([]byte(stream))
+	raw, complete, err := r.Finish()
+	if err != nil || !complete {
+		t.Fatalf("Finish() = %v, %v", complete, err)
+	}
+	if !strings.Contains(string(raw), `"x"`) {
+		t.Fatalf("missing content: %s", raw)
+	}
+}
+
+func TestStreamReconstructorCommentsAndCRLF(t *testing.T) {
+	stream := ": comment\r\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"}}]}\r\n\r\n: another\r\ndata: [DONE]\r\n\r\n"
+	r := NewStreamReconstructor()
+	r.Feed([]byte(stream))
+	raw, complete, err := r.Finish()
+	if err != nil || !complete {
+		t.Fatalf("Finish() = %v, %v", complete, err)
+	}
+	if !strings.Contains(string(raw), `"x"`) {
+		t.Fatalf("missing content: %s", raw)
+	}
+}
+
+func TestStreamReconstructorEventField(t *testing.T) {
+	stream := "event: message\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"}}]}\n\nevent: done\ndata: [DONE]\n\n"
+	r := NewStreamReconstructor()
+	r.Feed([]byte(stream))
+	raw, complete, err := r.Finish()
+	if err != nil || !complete {
+		t.Fatalf("Finish() = %v, %v", complete, err)
+	}
+	if !strings.Contains(string(raw), `"x"`) {
+		t.Fatalf("missing content: %s", raw)
+	}
+}
+
+func TestStreamReconstructorMalformedThenValid(t *testing.T) {
+	stream := "data: not-json\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"}}]}\n\ndata: [DONE]\n\n"
+	r := NewStreamReconstructor()
+	r.Feed([]byte(stream))
+	raw, complete, err := r.Finish()
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !complete {
+		t.Fatal("expected [DONE] to complete the stream")
+	}
+	if !strings.Contains(string(raw), `"x"`) {
+		t.Fatalf("valid event after malformed one was not processed: %s", raw)
+	}
+}
+
+func TestStreamReconstructorDoneWithWhitespace(t *testing.T) {
+	stream := "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"}}]}\n\ndata:   [DONE]   \n\n"
+	r := NewStreamReconstructor()
+	r.Feed([]byte(stream))
+	_, complete, err := r.Finish()
+	if err != nil || !complete {
+		t.Fatalf("Finish() = %v, %v", complete, err)
+	}
+}
+
+func TestStreamReconstructorRejectsBadToolCallIndex(t *testing.T) {
+	cases := []struct{ name, index string }{
+		{"negative", "-1"},
+		{"fractional", "1.5"},
+		{"string", `"0"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stream := `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":` + tc.index + `,"id":"call_1","type":"function","function":{"name":"f","arguments":"{}"}}]}}]}` + "\n\ndata: [DONE]\n\n"
+			r := NewStreamReconstructor()
+			r.Feed([]byte(stream))
+			raw, complete, err := r.Finish()
+			if err == nil {
+				t.Fatal("expected index error")
+			}
+			if !complete {
+				t.Fatal("expected [DONE] to complete the stream")
+			}
+			if !strings.Contains(string(raw), `"call_1"`) {
+				t.Fatalf("tool call data lost: %s", raw)
+			}
+		})
+	}
+}
+
+func TestStreamReconstructorRejectsDuplicateToolCallIndex(t *testing.T) {
+	stream := `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"f","arguments":"{}"}},{"index":0,"id":"b","type":"function","function":{"name":"g","arguments":"{}"}}]}}]}` + "\n\ndata: [DONE]\n\n"
+	r := NewStreamReconstructor()
+	r.Feed([]byte(stream))
+	_, complete, err := r.Finish()
+	if err == nil {
+		t.Fatal("expected duplicate index error")
+	}
+	if !complete {
+		t.Fatal("expected [DONE] to complete the stream")
+	}
+}
+
+func TestStreamReconstructorEventSizeLimit(t *testing.T) {
+	r := NewStreamReconstructor()
+	r.Feed(bytes.Repeat([]byte("a"), maxEventBytes+1))
+	raw, complete, err := r.Finish()
+	if err == nil {
+		t.Fatal("expected event size error")
+	}
+	if complete || raw != nil {
+		t.Fatalf("expected no reconstruction, complete=%v raw=%s", complete, raw)
+	}
+}
+
+func TestStreamReconstructorErrorObjectWithParseError(t *testing.T) {
+	stream := "data: not-json\n\ndata: {\"error\":{\"message\":\"boom\"}}\n\n"
+	r := NewStreamReconstructor()
+	r.Feed([]byte(stream))
+	raw, complete, err := r.Finish()
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !complete {
+		t.Fatal("terminal error object should complete the stream")
+	}
+	if !strings.Contains(string(raw), "boom") {
+		t.Fatalf("missing error object: %s", raw)
 	}
 }

@@ -80,10 +80,17 @@ type functionCallAcc struct {
 	arguments strings.Builder
 }
 
+// maxEventBytes caps a single SSE event. Events are small in normal LLM
+// streams; a larger event is treated as malformed instead of growing memory
+// without bound.
+const maxEventBytes = 8 << 20
+
 type sseParser struct {
-	buf   []byte
-	data  []string
-	event string
+	buf       []byte
+	data      []string
+	dataBytes int
+	event     string
+	err       error
 }
 
 type sseEvent struct {
@@ -103,6 +110,19 @@ func (s *StreamReconstructor) Feed(p []byte) {
 	for _, ev := range s.sse.feed(p) {
 		s.handleEvent(ev)
 	}
+	s.recordSSEError()
+}
+
+func (s *StreamReconstructor) recordSSEError() {
+	if s.sse.err != nil {
+		s.noteError("%v", s.sse.err)
+	}
+}
+
+func (s *StreamReconstructor) noteError(format string, args ...any) {
+	if s.parseErr == nil {
+		s.parseErr = fmt.Errorf(format, args...)
+	}
 }
 
 // Finish returns the reconstructed response, whether the stream appeared to
@@ -111,6 +131,7 @@ func (s *StreamReconstructor) Finish() (json.RawMessage, bool, error) {
 	for _, ev := range s.sse.finish() {
 		s.handleEvent(ev)
 	}
+	s.recordSSEError()
 	raw, err := s.build()
 	if err != nil {
 		return nil, false, err
@@ -182,7 +203,7 @@ func (s *StreamReconstructor) handleChunk(chunk map[string]any) {
 		}
 		idx := 0
 		if v, ok := choice["index"]; ok {
-			idx = intFromAny(v, 0)
+			idx, _ = s.streamIndex(v, 0)
 		}
 		acc := s.choices[idx]
 		if acc == nil {
@@ -226,6 +247,7 @@ func (s *StreamReconstructor) handleDelta(acc *choiceAcc, delta map[string]any) 
 	}
 
 	if rawDetails, ok := delta["reasoning_details"].([]any); ok {
+		seen := make(map[int]bool, len(rawDetails))
 		for pos, rawDetail := range rawDetails {
 			detail, ok := rawDetail.(map[string]any)
 			if !ok {
@@ -233,8 +255,12 @@ func (s *StreamReconstructor) handleDelta(acc *choiceAcc, delta map[string]any) 
 			}
 			idx := pos
 			if v, ok := detail["index"]; ok {
-				idx = intFromAny(v, pos)
+				idx, _ = s.streamIndex(v, pos)
 			}
+			if seen[idx] {
+				s.noteError("duplicate reasoning detail index %d", idx)
+			}
+			seen[idx] = true
 			d := acc.reasoningDetails[idx]
 			if d == nil {
 				d = &reasoningDetailAcc{
@@ -250,6 +276,7 @@ func (s *StreamReconstructor) handleDelta(acc *choiceAcc, delta map[string]any) 
 	}
 
 	if rawCalls, ok := delta["tool_calls"].([]any); ok {
+		seen := make(map[int]bool, len(rawCalls))
 		for pos, rawCall := range rawCalls {
 			call, ok := rawCall.(map[string]any)
 			if !ok {
@@ -257,8 +284,12 @@ func (s *StreamReconstructor) handleDelta(acc *choiceAcc, delta map[string]any) 
 			}
 			idx := pos
 			if v, ok := call["index"]; ok {
-				idx = intFromAny(v, pos)
+				idx, _ = s.streamIndex(v, pos)
 			}
+			if seen[idx] {
+				s.noteError("duplicate tool call index %d", idx)
+			}
+			seen[idx] = true
 			tc := acc.toolCalls[idx]
 			if tc == nil {
 				tc = &toolCallAcc{}
@@ -491,30 +522,42 @@ func appendStringValue(b *strings.Builder, v any) {
 	}
 }
 
-func intFromAny(v any, fallback int) int {
-	switch n := v.(type) {
-	case float64:
-		return int(n)
-	case int:
-		return n
-	case int64:
-		return int(n)
-	case json.Number:
-		if i, err := n.Int64(); err == nil {
-			return int(i)
-		}
+func (s *StreamReconstructor) streamIndex(value any, fallback int) (int, bool) {
+	idx, ok := nonNegativeInt(value)
+	if !ok {
+		s.noteError("invalid stream index %v", value)
+		return fallback, false
 	}
-	return fallback
+	return idx, true
 }
 
-// FeedBytes is a convenience for tests and non-incremental callers.
-func (s *StreamReconstructor) FeedBytes(p []byte) {
-	var buf bytes.Buffer
-	buf.Write(p)
-	s.Feed(buf.Bytes())
+func nonNegativeInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case float64:
+		i := int(n)
+		if float64(i) == n && i >= 0 {
+			return i, true
+		}
+	case int:
+		if n >= 0 {
+			return n, true
+		}
+	case int64:
+		if n >= 0 {
+			return int(n), true
+		}
+	case json.Number:
+		if i, err := n.Int64(); err == nil && i >= 0 {
+			return int(i), true
+		}
+	}
+	return 0, false
 }
 
 func (p *sseParser) feed(data []byte) []sseEvent {
+	if p.err != nil {
+		return nil
+	}
 	p.buf = append(p.buf, data...)
 	var out []sseEvent
 	for {
@@ -528,11 +571,24 @@ func (p *sseParser) feed(data []byte) []sseEvent {
 		if ev, ok := p.processLine(line); ok {
 			out = append(out, ev)
 		}
+		if p.dataBytes > maxEventBytes {
+			p.err = fmt.Errorf("SSE event exceeds %d bytes", maxEventBytes)
+			p.data = nil
+			p.dataBytes = 0
+			return out
+		}
+	}
+	if len(p.buf) > maxEventBytes {
+		p.err = fmt.Errorf("SSE line exceeds %d bytes", maxEventBytes)
+		p.buf = nil
 	}
 	return out
 }
 
 func (p *sseParser) finish() []sseEvent {
+	if p.err != nil {
+		return nil
+	}
 	var out []sseEvent
 	if len(p.buf) > 0 {
 		line := string(p.buf)
@@ -541,6 +597,12 @@ func (p *sseParser) finish() []sseEvent {
 		if ev, ok := p.processLine(line); ok {
 			out = append(out, ev)
 		}
+	}
+	if p.dataBytes > maxEventBytes {
+		p.err = fmt.Errorf("SSE event exceeds %d bytes", maxEventBytes)
+		p.data = nil
+		p.dataBytes = 0
+		return nil
 	}
 	if ev, ok := p.dispatch(); ok {
 		out = append(out, ev)
@@ -567,6 +629,7 @@ func (p *sseParser) processLine(line string) (sseEvent, bool) {
 		p.event = value
 	case "data":
 		p.data = append(p.data, value)
+		p.dataBytes += len(value) + 1
 	}
 	return sseEvent{}, false
 }
@@ -577,6 +640,7 @@ func (p *sseParser) dispatch() (sseEvent, bool) {
 	}
 	ev := sseEvent{Event: p.event, Data: strings.Join(p.data, "\n")}
 	p.data = nil
+	p.dataBytes = 0
 	p.event = ""
 	return ev, true
 }

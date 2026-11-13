@@ -1025,3 +1025,35 @@ func TestProxyRejectsUpgradeRequests(t *testing.T) {
 		t.Fatalf("expected 501, got %d", resp.StatusCode)
 	}
 }
+
+func TestProxyStreamErrorObjectWithMalformedEventIsIncomplete(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: not-json\n\ndata: {\"error\":{\"message\":\"boom\"}}\n\n")
+	}))
+	defer upstream.Close()
+
+	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Session-Id", "stream-parse-error")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	reqs := waitForRequests(t, st, waitForSessionID(t, st))
+	detail, err := st.GetRequest(context.Background(), reqs[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !detail.Incomplete {
+		t.Fatal("expected incomplete capture")
+	}
+	if !strings.Contains(detail.ParseError, "invalid stream JSON") {
+		t.Fatalf("unexpected parse error: %q", detail.ParseError)
+	}
+}

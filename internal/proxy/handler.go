@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -20,6 +21,11 @@ import (
 	"dumbllmproxy/internal/store"
 	"dumbllmproxy/internal/usage"
 )
+
+// maxResponseStreamBytes bounds the amount of a streaming response kept for
+// reconstruction. Normal LLM streams are far smaller; a larger stream is
+// treated as incomplete instead of growing memory without bound.
+const maxResponseStreamBytes = 256 << 20
 
 type Handler struct {
 	cfg    *config.Config
@@ -119,6 +125,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for {
 			n, err := resp.Body.Read(buf)
 			if n > 0 {
+				if rawStream.Len()+n > maxResponseStreamBytes {
+					readErr = fmt.Errorf("response stream exceeds %d bytes", maxResponseStreamBytes)
+					break
+				}
 				rawStream.Write(buf[:n])
 				if !clientGone {
 					if _, werr := w.Write(buf[:n]); werr != nil {
