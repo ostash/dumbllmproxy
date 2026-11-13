@@ -40,6 +40,10 @@ type Tree struct {
 type builder struct {
 	nextID int
 	roots  []*Node
+	// hashes memoizes identity hashes for the duration of one Build. Requests
+	// replay the same history, so the same raw message is hashed many times;
+	// the map is discarded with the builder.
+	hashes map[string]string
 }
 
 // Build reconstructs a conversation tree from captured requests. Only requests
@@ -75,7 +79,16 @@ func Build(requests []store.RequestForTree) Tree {
 }
 
 func (b *builder) findOrCreate(parent *Node, raw json.RawMessage, requestID int64) *Node {
-	h := identityHash(raw)
+	// The map lookup form avoids allocating a string on a hit.
+	h, ok := b.hashes[string(raw)]
+	if !ok {
+		key := string(raw)
+		h = identityHash(raw)
+		if b.hashes == nil {
+			b.hashes = make(map[string]string)
+		}
+		b.hashes[key] = h
+	}
 	for _, child := range parent.Children {
 		if child.hash == h {
 			return child
@@ -101,10 +114,11 @@ func (b *builder) findOrCreate(parent *Node, raw json.RawMessage, requestID int6
 }
 
 func addRequestID(node *Node, id int64) {
-	for _, existing := range node.RequestIDs {
-		if existing == id {
-			return
-		}
+	// Requests arrive in chronological order, so a repeated request ID can only
+	// be the most recently appended one. Checking the tail avoids a scan over
+	// every ID a frequently repeated message has accumulated.
+	if n := len(node.RequestIDs); n > 0 && node.RequestIDs[n-1] == id {
+		return
 	}
 	node.RequestIDs = append(node.RequestIDs, id)
 }

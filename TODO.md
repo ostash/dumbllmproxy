@@ -10,17 +10,27 @@ The database still grows roughly quadratically because every request stores the 
 - Do not store bodies for auxiliary requests (model listings, presets), or truncate them. They are rarely useful and add
   noise.
 
-## Performance
+## SQL offload
+
+Prefer SQL for filtering, sorting, pagination, aggregation, counting and distinct values across the store. Keep Go for
+work SQL cannot express cleanly: provider-specific parsing, stream reconstruction and cost calculation. This applies
+beyond list views; the items below are instances of the same direction.
 
 - Move request filtering, sorting and pagination into SQL. `ListAllRequestsFiltered` currently loads every request, then
   filters and sorts in Go (`internal/store/store.go`).
 - Move session filtering, sorting and pagination into SQL. `ListSessions` / `ListSessionsFiltered` aggregate all
   sessions and all requests in memory.
-- Avoid resolving the cost of every request on every list call. `sessionCosts` walks the whole `requests` table each
-  time a session list or session detail is read.
+- Limit cost resolution to the rows a read actually needs. `sessionCosts` walks the whole `requests` table on every
+  session list or session detail read, and `GetSession` resolves costs for every session, not just the requested one.
+  The calculation itself stays in Go.
+- Index the columns used by `Facets` and avoid unindexed `SELECT DISTINCT` on every call.
+
+## Performance
+
+- Re-parsing every request body in `openai.ExtractMessages` is the other half of the tree build. It is inherent to
+  storing the full history per request; the storage deduplication item is the fix, not the tree builder.
 - Replace the linear child scan in `conversation.findOrCreate` (`internal/conversation/tree.go`) with a hash-keyed map.
-  It is O(n²) in the number of messages per parent.
-- Cache or index `Facets` instead of running `SELECT DISTINCT` on every call.
+  Secondary: it only matters when a node has many children.
 
 ## API and UI
 
