@@ -26,7 +26,7 @@ func TestSessionSummaryCountsReportedUsageAndCost(t *testing.T) {
 			return Cost{}
 		}
 		amount := *f.ProviderCost
-		return Cost{Amount: &amount, Source: "openrouter_reported"}
+		return Cost{Amount: &amount, Source: CostSourceProviderReported}
 	})
 	usageJSON := `{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}`
 	providerCost := 0.25

@@ -39,7 +39,7 @@ func TestResolvePrefersProviderReportedCost(t *testing.T) {
 	if got.Amount == nil || *got.Amount != 0.75 {
 		t.Fatalf("expected provider cost, got %#v", got.Amount)
 	}
-	if got.Source != "openrouter_reported" {
+	if got.Source != store.CostSourceProviderReported {
 		t.Fatalf("unexpected source: %q", got.Source)
 	}
 }

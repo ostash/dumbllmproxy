@@ -33,6 +33,10 @@ type CostFacts struct {
 	ProviderCost *float64
 }
 
+// CostSourceProviderReported marks a cost captured from the provider's
+// response rather than calculated from the active pricing configuration.
+const CostSourceProviderReported = "provider_reported"
+
 // Cost is a resolved cost for display. Amount is nil when cost is unavailable.
 type Cost struct {
 	Amount       *float64
@@ -967,7 +971,7 @@ func (s *Store) GetRequest(ctx context.Context, id int64) (*RequestDetail, error
 	d.CostSource = cost.Source
 	d.CostDetailsJSON = cost.DetailsJSON
 	d.PricingSnapshotJSON = cost.SnapshotJSON
-	if cost.Amount != nil && cost.Source != "" && cost.Source != "openrouter_reported" {
+	if cost.Amount != nil && cost.Source != "" && cost.Source != CostSourceProviderReported {
 		d.CalculatedCost = cost.Amount
 	}
 	return &d, nil

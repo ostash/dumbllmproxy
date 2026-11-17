@@ -153,7 +153,7 @@ func TestProxyNonStreamingAndOpenRouterCost(t *testing.T) {
 	if r.Harness != "harness-9" {
 		t.Fatalf("unexpected harness: %q", r.Harness)
 	}
-	if r.CostAmount == nil || *r.CostAmount != 0.0042 || r.CostSource != "openrouter_reported" {
+	if r.CostAmount == nil || *r.CostAmount != 0.0042 || r.CostSource != store.CostSourceProviderReported {
 		t.Fatalf("unexpected cost: %#v", r)
 	}
 	if r.CachedInputTokens == nil || *r.CachedInputTokens != 2 {
@@ -307,7 +307,7 @@ func TestProxyStreamingPassthroughAndReconstruction(t *testing.T) {
 	if r.TotalTokens == nil || *r.TotalTokens != 9 {
 		t.Fatalf("usage not stored: %#v", r)
 	}
-	if r.CostAmount == nil || *r.CostAmount != 0.0007 || r.CostSource != "openrouter_reported" {
+	if r.CostAmount == nil || *r.CostAmount != 0.0007 || r.CostSource != store.CostSourceProviderReported {
 		t.Fatalf("streaming OpenRouter cost not stored: %#v", r)
 	}
 }

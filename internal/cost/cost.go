@@ -32,10 +32,9 @@ func (r *Resolver) Resolve(facts store.CostFacts) store.Cost {
 		amount := *facts.ProviderCost
 		return store.Cost{
 			Amount: &amount,
-			Source: "openrouter_reported",
+			Source: store.CostSourceProviderReported,
 			DetailsJSON: marshal(map[string]any{
-				"source": "openrouter_reported",
-				"field":  "usage.cost",
+				"source": store.CostSourceProviderReported,
 				"amount": amount,
 			}),
 		}
