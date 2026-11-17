@@ -47,8 +47,8 @@ type builder struct {
 }
 
 // Build reconstructs a conversation tree from captured requests. Only requests
-// using the openai_chat parser participate; unknown formats remain available in
-// the request inspector.
+// using the openai_chat parser participate; other parsers remain available in
+// the request inspector when the request was captured.
 //
 // Only completed exchanges contribute. A request that failed (for example a
 // 401 or 404) or whose response could not be parsed has no assistant message,

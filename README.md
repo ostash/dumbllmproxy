@@ -52,7 +52,7 @@ Then open <http://127.0.0.1:8080/>.
 Point your harness at the proxy path instead of the provider URL:
 
 ```text
-http://127.0.0.1:8080/openrouter/v1/chat/completions
+http://127.0.0.1:8080/openrouter/api/v1/chat/completions
 http://127.0.0.1:8080/deepseek/chat/completions
 ```
 
@@ -64,7 +64,7 @@ Upstreams are matched by the longest configured path prefix. The prefix is strip
 appended to `base_url`:
 
 ```text
-/openrouter/v1/chat/completions?x=1
+/openrouter/api/v1/chat/completions?x=1
   -> https://openrouter.ai/api/v1/chat/completions?x=1
 ```
 
@@ -78,6 +78,9 @@ presets, health checks) is not stored.
 
 Streaming responses are passed through in real time; the final OpenAI Chat Completions response is reconstructed and
 stored. No individual SSE events are stored.
+
+Request search matches metadata only — request ID, session key, method, provider, model, harness, endpoint, and status —
+not message content. Session search matches the session key, providers, and models.
 
 ## Configuration
 

@@ -16,35 +16,28 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
 
 - Route by longest configured path prefix. Strip the prefix and append the remaining path and query to `base_url`.
   `/api` is reserved; `/` is rejected.
-- Preserve the client's percent-encoded path when joining the remainder to `base_url`; do not re-encode `%2F` and
-  similar escapes.
 - Forward method, path, query, headers, body, status, and response headers. Handle hop-by-hop headers in both
   directions; drop `Connection` and every header it names.
 - Do not inject or manage credentials. Forward client headers unchanged.
-- Buffer the request body, re-frame chunked requests with `Content-Length`, strip `Expect`, and reject upgrades with
-  `501`.
+- Buffer and re-frame the request body as needed; reject connection upgrades.
 - Forward compressed bytes unchanged; store a separately decoded copy.
 - Do not follow redirects. Forward 3xx responses and their `Location` header unchanged.
 - Stream all responses as they arrive, regardless of content type. Do not buffer the whole response before forwarding.
   The capture buffer is bounded; exceeding it truncates the capture, never the forwarded response.
-- On an upstream read error for a non-SSE response, abort the client connection so the client sees a failure. Do not
-  abort a complete SSE stream or a response whose declared length was fully read.
+- Never present a truncated upstream response as complete. Do not turn a completed stream or a fully read body into a
+  failure.
 
 ## Capture
 
 - Classify from the request body before forwarding. Only conversation requests are captured; auxiliary traffic is
   forwarded without buffering and discarded. There is no response-based fallback: an unrecognized request body is
   auxiliary.
-- Session and harness detection use ordered config lists; the first present non-empty header wins. Store only the
-  extracted values, not the header names or values.
-- `metadata_headers` is an independent optional capture list. Entries are exact names or `re:` regular expressions. It
-  may include any header, including credentials; that is the user's responsibility.
-- Do not store full request/response headers.
+- Store only the extracted session and harness values, not header names or raw header values.
+- Capture only configured metadata headers; never store the full request/response header set.
 - Store request/response bodies, status, content types, model, session, harness, configured metadata, usage, and
   provider-reported cost.
-- Timestamps are fixed-width UTC text so they sort chronologically.
-- Capture runs asynchronously after the response is forwarded. The handler enqueues a job; a single worker decodes,
-  reconstructs, classifies, and saves. Capture must not block the response path.
+- Capture runs asynchronously after the response is forwarded and must not block the response path under normal
+  operation. The bounded capture queue applies backpressure rather than dropping captures when full.
 
 ## Streaming reconstruction
 
@@ -61,8 +54,7 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
 - Build a tree from completed exchanges only. Shared message-history prefixes merge; diverging histories branch.
 - A node records the first request that introduced it and all requests where it appears.
 - Failed or unparseable requests stay in the session request list and timeline but do not add dangling turns.
-- Message identity ignores `reasoning`, `reasoning_content`, `reasoning_details`, `annotations`, `audio`, and
-  `service_tier`.
+- Message identity ignores provider-specific reasoning and annotation fields.
 
 ## Cost
 
@@ -74,10 +66,8 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
 
 ## Storage
 
-- SQLite with WAL, a small connection pool (4), foreign keys, and a busy timeout. Per-connection pragmas are set in the
-  DSN so every pooled connection gets them.
-- Payloads are minified and zstd-compressed with a private magic prefix; decode on read. Rows written before compression
-  remain readable.
+- SQLite with WAL and foreign keys; capture writes must not block UI reads.
+- Payloads are compressed on disk and decoded on read; older rows remain readable.
 - Do not persist calculated costs, cost explanations, or pricing snapshots.
 - One-time migration scripts are run manually and are not committed.
 

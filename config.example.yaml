@@ -6,7 +6,7 @@ proxy:
   database: ./dumbllmproxy.db
 
 # Requests are routed by longest matching path prefix.
-# /openrouter/v1/chat/completions -> https://openrouter.ai/api/v1/chat/completions
+# /openrouter/api/v1/chat/completions -> https://openrouter.ai/api/v1/chat/completions
 upstreams:
   - name: openrouter
     prefix: /openrouter
@@ -21,51 +21,44 @@ upstreams:
     parser: openai_chat
     pricing: deepseek
 
-  # Unknown providers still work as transparent proxies. Their requests and raw
-  # responses remain inspectable in the UI.
+  # Unknown providers are still proxied. A request is captured only when its body contains messages, input, prompt, or
+  # contents; otherwise it is forwarded but not stored.
   # - name: custom
   #   prefix: /custom
   #   base_url: https://llm.example.com
   #   parser: none
   #   pricing: none
 
-# Session detection. First present header wins. The extracted identifier is
-# stored; the header name and value are not.
+# Session detection. First present header wins. The extracted identifier is stored; the header name and value are not.
 session_headers:
   - x-session-id
   - x-conversation-id
   - x-claude-code-session-id
 
-# Harness detection. First present header wins. The extracted value is stored;
-# the header is not. `user-agent` is reduced to its product token.
+# Harness detection. First present header wins. The extracted value is stored; the header is not. `user-agent` is
+# reduced to its product token.
 harness_headers:
   - x-harness-id
   - x-openrouter-title
   - user-agent
 
-# Additional headers to capture for inspection. This is independent of session
-# and harness detection. Entries are exact header names, or `re:` followed by a
-# regular expression matched case-insensitively against the header name. Any
-# header can be listed, including credentials; that is the user's
-# responsibility. Full headers are not stored.
+# Additional headers to capture for inspection. This is independent of session and harness detection. Entries are exact
+# header names, or `re:` followed by a regular expression matched case-insensitively against the header name. Any header
+# can be listed, including credentials; that is the user's responsibility. Full headers are not stored.
 metadata_headers:
   - x-request-id
   - "re:^x-trace-"
 
 pricing:
-  # OpenRouter uses the provider-reported usage.cost field. No pricing table is
-  # needed for it.
+  # OpenRouter uses the provider-reported usage.cost field. No pricing table is needed for it.
 
-  # Calculated costs are recomputed on every read from the captured request
-  # facts, so editing these rates and restarting corrects previously captured
-  # request and session totals without any migration or replay.
-  #
-  # DeepSeek rates are expressed per 1M tokens. Costs are reported in USD.
-  # The rates below are placeholders (0.00); fill in the real values.
-  # Rates are evaluated in configuration order: the first matching rate wins.
-  # Put more specific rates (peak, holiday, date overrides) before defaults.
-  # `from` is inclusive; `to` is inclusive and optional. Omit `to` for the
-  # current period.
+  # Calculated costs are recomputed on every read from the captured request facts, so editing these rates and restarting
+  # corrects previously captured request and session totals without any migration or replay.
+
+  # DeepSeek rates are expressed per 1M tokens. Costs are reported in USD. The rates below are placeholders (0.00); fill
+  # in the real values. Rates are evaluated in configuration order: the first matching rate wins. Put more specific
+  # rates (peak, holiday, date overrides) before defaults. `from` is inclusive; `to` is inclusive and optional. Omit
+  # `to` for the current period.
   deepseek:
     unit: per_million_tokens
     schedule_timezone: UTC
