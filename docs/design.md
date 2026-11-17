@@ -68,7 +68,8 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
 
 ## Storage
 
-- SQLite with WAL, one connection, foreign keys, and a busy timeout.
+- SQLite with WAL, a small connection pool (4), foreign keys, and a busy timeout. Per-connection pragmas are set in the
+  DSN so every pooled connection gets them.
 - Payloads are minified and zstd-compressed with a private magic prefix; decode on read. Rows written before compression
   remain readable.
 - Do not persist calculated costs, cost explanations, or pricing snapshots.

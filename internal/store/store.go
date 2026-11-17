@@ -208,21 +208,25 @@ type RequestForTree struct {
 	ResponseBody []byte
 }
 
+const (
+	// MaxOpenConns leaves room for UI readers to run while the capture worker
+	// writes. WAL allows concurrent readers with one writer.
+	MaxOpenConns = 4
+)
+
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
-	for _, pragma := range []string{
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=5000",
-		"PRAGMA foreign_keys=ON",
-	} {
-		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("%s: %w", pragma, err)
-		}
+	db.SetMaxOpenConns(MaxOpenConns)
+	db.SetMaxIdleConns(MaxOpenConns)
+	// journal_mode is persistent in the database file, so one connection is
+	// enough. busy_timeout and foreign_keys are per-connection and are set in
+	// the DSN so every pooled connection receives them.
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("PRAGMA journal_mode=WAL: %w", err)
 	}
 	s := &Store{db: db}
 	if err := s.initSchema(); err != nil {
@@ -230,6 +234,14 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+func sqliteDSN(path string) string {
+	const pragmas = "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	if strings.Contains(path, "?") {
+		return path + "&" + pragmas
+	}
+	return path + "?" + pragmas
 }
 
 func (s *Store) Close() error {
