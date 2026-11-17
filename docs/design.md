@@ -25,6 +25,8 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
 - Do not follow redirects. Forward 3xx responses and their `Location` header unchanged.
 - Stream all responses as they arrive, regardless of content type. Do not buffer the whole response before forwarding.
   The capture buffer is bounded; exceeding it truncates the capture, never the forwarded response.
+- On an upstream read error for a non-SSE response, abort the client connection so the client sees a failure. Do not
+  abort a complete SSE stream or a response whose declared length was fully read.
 
 ## Capture
 

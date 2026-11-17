@@ -616,6 +616,55 @@ func TestProxyStreamsNonSSE(t *testing.T) {
 	}
 }
 
+func TestProxyAbortsTruncatedNonSSEResponse(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "hijacking not supported", http.StatusInternalServerError)
+			return
+		}
+		conn, buf, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		// A chunked response without its terminating chunk: the proxy sees an
+		// upstream read error after forwarding the partial body.
+		buf.WriteString("HTTP/1.1 200 OK\r\n")
+		buf.WriteString("Content-Type: application/json\r\n")
+		buf.WriteString("Transfer-Encoding: chunked\r\n")
+		buf.WriteString("\r\n")
+		buf.WriteString("b\r\n")
+		buf.WriteString(`{"choices":`)
+		buf.WriteString("\r\n")
+		_ = buf.Flush()
+	}))
+	defer upstream.Close()
+
+	st, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	reqBody := `{"model":"m","messages":[{"role":"user","content":"hi"}]}`
+	req, err := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Session-Id", "truncated")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if readErr == nil {
+		t.Fatal("expected client read error from aborted response")
+	}
+
+	reqs := waitForRequests(t, st, waitForSessionID(t, st))
+	if len(reqs) != 1 || !reqs[0].Incomplete {
+		t.Fatalf("expected one incomplete capture, got %#v", reqs)
+	}
+}
+
 func TestProxyAuxiliaryRequestIsNotStored(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

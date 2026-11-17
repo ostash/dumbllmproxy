@@ -296,10 +296,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	captureBuf := captureBuffer{limit: h.captureLimit}
 	var clientGone bool
 	var readErr error
+	var totalRead int64
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			totalRead += int64(n)
 			if captureRequest {
 				_, _ = captureBuf.Write(buf[:n])
 			}
@@ -320,6 +322,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	complete := resp.ContentLength >= 0 && totalRead >= resp.ContentLength
+	applyReadErr := readErr != nil && (streamed || !complete)
+	abort := readErr != nil && !streamed && !complete && !clientGone && r.Context().Err() == nil
+
 	if captureRequest {
 		now := time.Now().UTC()
 		incomplete := captureBuf.truncated
@@ -327,7 +333,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if captureBuf.truncated {
 			parseError = fmt.Sprintf("capture truncated at %d bytes", h.captureLimit)
 		}
-		if readErr != nil {
+		if applyReadErr {
 			incomplete = true
 			if parseError == "" {
 				parseError = "response read: " + readErr.Error()
@@ -356,6 +362,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			readIncomplete:      incomplete,
 			readParseError:      parseError,
 		})
+	}
+	if abort {
+		panic(http.ErrAbortHandler)
 	}
 }
 
