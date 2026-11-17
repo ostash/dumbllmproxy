@@ -20,6 +20,7 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
 - Buffer the request body, re-frame chunked requests with `Content-Length`, strip `Expect`, and reject upgrades with
   `501`.
 - Forward compressed bytes unchanged; store a separately decoded copy.
+- Do not follow redirects. Forward 3xx responses and their `Location` header unchanged.
 - Stream `text/event-stream` responses as they arrive. Do not buffer the whole response before forwarding.
 
 ## Capture

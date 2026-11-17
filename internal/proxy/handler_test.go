@@ -195,6 +195,32 @@ func TestProxyNonStreamingAndOpenRouterCost(t *testing.T) {
 	}
 }
 
+func TestProxyDoesNotFollowRedirects(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/elsewhere", http.StatusFound)
+	}))
+	defer upstream.Close()
+
+	_, proxySrv := newTestProxy(t, upstream.URL, "none", "none")
+	req, _ := http.NewRequest(http.MethodGet, proxySrv.URL+"/open/start", nil)
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("expected 302, got %d", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); loc != "/elsewhere" {
+		t.Fatalf("expected Location /elsewhere, got %q", loc)
+	}
+}
+
 func TestProxyStreamingPassthroughAndReconstruction(t *testing.T) {
 	release := make(chan struct{})
 	firstChunk := "data: {\"id\":\"cmpl-s\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"stream-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n"

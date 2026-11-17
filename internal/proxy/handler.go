@@ -44,9 +44,15 @@ func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Handler {
 		KeepAlive: 30 * time.Second,
 	}).DialContext
 	return &Handler{
-		cfg:    cfg,
-		store:  st,
-		client: &http.Client{Transport: transport},
+		cfg:   cfg,
+		store: st,
+		client: &http.Client{
+			Transport: transport,
+			// A transparent proxy must forward 3xx responses, not follow them.
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 		logger: logger,
 	}
 }
