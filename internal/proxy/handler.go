@@ -22,10 +22,39 @@ import (
 	"dumbllmproxy/internal/usage"
 )
 
-// maxResponseStreamBytes bounds the amount of a streaming response kept for
-// reconstruction. Normal LLM streams are far smaller; a larger stream is
-// treated as incomplete instead of growing memory without bound.
-const maxResponseStreamBytes = 256 << 20
+// maxCapturedResponseBytes bounds the response body kept for capture. Overflow
+// truncates the capture, not the response forwarded to the client.
+const maxCapturedResponseBytes = 256 << 20
+
+// captureBuffer keeps at most limit bytes and records whether it truncated.
+// It never reports an error, so a full buffer does not interrupt forwarding.
+type captureBuffer struct {
+	buf       bytes.Buffer
+	limit     int
+	truncated bool
+}
+
+func (b *captureBuffer) Write(p []byte) (int, error) {
+	if b.truncated {
+		return len(p), nil
+	}
+	remaining := b.limit - b.buf.Len()
+	if remaining <= 0 {
+		b.truncated = true
+		return len(p), nil
+	}
+	if len(p) > remaining {
+		_, _ = b.buf.Write(p[:remaining])
+		b.truncated = true
+		return len(p), nil
+	}
+	_, _ = b.buf.Write(p)
+	return len(p), nil
+}
+
+func (b *captureBuffer) Bytes() []byte {
+	return b.buf.Bytes()
+}
 
 type Handler struct {
 	cfg    *config.Config
@@ -35,6 +64,7 @@ type Handler struct {
 
 	captureQueue chan captureJob
 	captureDone  chan struct{}
+	captureLimit int
 }
 
 func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Handler {
@@ -59,6 +89,7 @@ func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Handler {
 		logger:       logger,
 		captureQueue: make(chan captureJob, 256),
 		captureDone:  make(chan struct{}),
+		captureLimit: maxCapturedResponseBytes,
 	}
 	go h.captureWorker()
 	return h
@@ -114,9 +145,6 @@ func (h *Handler) processCapture(job captureJob) {
 		return
 	}
 	responseBody, rawFallback, incomplete, parseError := decodeResponse(job)
-	if !openai.IsConversationRequest(job.requestBody, responseBody) {
-		return
-	}
 	captured := h.capture(job.up, job.requestBody, responseBody)
 	captured.Model = job.model
 	captured.RawResponseBody = rawFallback
@@ -225,6 +253,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if reqDecodeErr != nil {
 		storedRequestBody = rawRequestBody
 	}
+	captureRequest := openai.IsConversationRequest(storedRequestBody)
 
 	model := openai.ExtractModel(storedRequestBody)
 	sessionKey := h.session(r.Header)
@@ -256,94 +285,78 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	addHeaderMetadata(metadata, resp.Header, h.cfg.MetadataHeaderMatchers(), "response")
-	copyResponseHeaders(w.Header(), resp.Header)
-
 	streamed := isEventStream(resp.Header.Get("Content-Type"))
-	var completedAt *time.Time
-	var rawResponse []byte
-	var incomplete bool
-	var streamParseError string
+	if captureRequest {
+		addHeaderMetadata(metadata, resp.Header, h.cfg.MetadataHeaderMatchers(), "response")
+	}
+	copyResponseHeaders(w.Header(), resp.Header)
+	w.WriteHeader(resp.StatusCode)
 
-	if streamed {
-		w.WriteHeader(resp.StatusCode)
-		flusher, _ := w.(http.Flusher)
-		var rawStream bytes.Buffer
-		buf := make([]byte, 32*1024)
-		clientGone := false
-		var readErr error
-		for {
-			n, err := resp.Body.Read(buf)
-			if n > 0 {
-				if rawStream.Len()+n > maxResponseStreamBytes {
-					readErr = fmt.Errorf("response stream exceeds %d bytes", maxResponseStreamBytes)
-					break
+	flusher, _ := w.(http.Flusher)
+	captureBuf := captureBuffer{limit: h.captureLimit}
+	var clientGone bool
+	var readErr error
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			if captureRequest {
+				_, _ = captureBuf.Write(buf[:n])
+			}
+			if !clientGone {
+				if _, werr := w.Write(buf[:n]); werr != nil {
+					clientGone = true
 				}
-				rawStream.Write(buf[:n])
-				if !clientGone {
-					if _, werr := w.Write(buf[:n]); werr != nil {
-						clientGone = true
-					}
-					if flusher != nil {
-						flusher.Flush()
-					}
+				if flusher != nil {
+					flusher.Flush()
 				}
 			}
-			if err != nil {
-				if err != io.EOF {
-					readErr = err
-				}
-				break
+		}
+		if err != nil {
+			if err != io.EOF {
+				readErr = err
 			}
-		}
-		now := time.Now().UTC()
-		completedAt = &now
-		rawResponse = rawStream.Bytes()
-		if readErr != nil {
-			incomplete = true
-			streamParseError = "stream read: " + readErr.Error()
-		}
-	} else {
-		raw, readErr := io.ReadAll(resp.Body)
-		now := time.Now().UTC()
-		completedAt = &now
-		rawResponse = raw
-		if readErr != nil {
-			incomplete = true
-			streamParseError = "response read: " + readErr.Error()
-		}
-		w.WriteHeader(resp.StatusCode)
-		if len(raw) > 0 {
-			if _, err := w.Write(raw); err != nil {
-				h.logger.Printf("client write failed for %s: %v", r.URL.Path, err)
-			}
-		}
-		if flusher, ok := w.(http.Flusher); ok {
-			flusher.Flush()
+			break
 		}
 	}
 
-	h.enqueue(captureJob{
-		up:                  up,
-		requestBody:         storedRequestBody,
-		rawResponseBody:     rawResponse,
-		contentEncoding:     contentEncoding(resp.Header),
-		streamed:            streamed,
-		startedAt:           startedAt,
-		completedAt:         completedAt,
-		method:              r.Method,
-		endpoint:            requestEndpoint(up, r),
-		provider:            up.Name,
-		statusCode:          resp.StatusCode,
-		requestContentType:  r.Header.Get("Content-Type"),
-		responseContentType: resp.Header.Get("Content-Type"),
-		metadata:            metadata,
-		model:               model,
-		sessionKey:          sessionKey,
-		harness:             harness,
-		readIncomplete:      incomplete,
-		readParseError:      streamParseError,
-	})
+	if captureRequest {
+		now := time.Now().UTC()
+		incomplete := captureBuf.truncated
+		var parseError string
+		if captureBuf.truncated {
+			parseError = fmt.Sprintf("capture truncated at %d bytes", h.captureLimit)
+		}
+		if readErr != nil {
+			incomplete = true
+			if parseError == "" {
+				parseError = "response read: " + readErr.Error()
+			} else {
+				parseError += "; response read: " + readErr.Error()
+			}
+		}
+		h.enqueue(captureJob{
+			up:                  up,
+			requestBody:         storedRequestBody,
+			rawResponseBody:     captureBuf.Bytes(),
+			contentEncoding:     contentEncoding(resp.Header),
+			streamed:            streamed,
+			startedAt:           startedAt,
+			completedAt:         &now,
+			method:              r.Method,
+			endpoint:            requestEndpoint(up, r),
+			provider:            up.Name,
+			statusCode:          resp.StatusCode,
+			requestContentType:  r.Header.Get("Content-Type"),
+			responseContentType: resp.Header.Get("Content-Type"),
+			metadata:            metadata,
+			model:               model,
+			sessionKey:          sessionKey,
+			harness:             harness,
+			readIncomplete:      incomplete,
+			readParseError:      parseError,
+		})
+	}
 }
 
 type captureResult struct {
@@ -449,7 +462,7 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.Upstre
 	completed := time.Now().UTC()
 	body := []byte("upstream request failed: " + cause.Error())
 	h.logger.Printf("upstream request failed for %s: %v", r.URL.Path, cause)
-	if !openai.IsConversationRequest(storedRequestBody, nil) {
+	if !openai.IsConversationRequest(storedRequestBody) {
 		http.Error(w, "upstream request failed", http.StatusBadGateway)
 		return
 	}

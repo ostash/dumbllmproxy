@@ -23,12 +23,14 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
   `501`.
 - Forward compressed bytes unchanged; store a separately decoded copy.
 - Do not follow redirects. Forward 3xx responses and their `Location` header unchanged.
-- Stream `text/event-stream` responses as they arrive. Do not buffer the whole response before forwarding.
+- Stream all responses as they arrive, regardless of content type. Do not buffer the whole response before forwarding.
+  The capture buffer is bounded; exceeding it truncates the capture, never the forwarded response.
 
 ## Capture
 
-- Store only conversation requests. Auxiliary traffic (model listings, presets, health checks) is classified at capture
-  time and discarded.
+- Classify from the request body before forwarding. Only conversation requests are captured; auxiliary traffic is
+  forwarded without buffering and discarded. There is no response-based fallback: an unrecognized request body is
+  auxiliary.
 - Session and harness detection use ordered config lists; the first present non-empty header wins. Store only the
   extracted values, not the header names or values.
 - `metadata_headers` is an independent optional capture list. Entries are exact names or `re:` regular expressions. It

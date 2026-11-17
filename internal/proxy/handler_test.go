@@ -551,6 +551,71 @@ func TestProxyUnassignedRequest(t *testing.T) {
 	}
 }
 
+func TestProxyStreamsNonSSE(t *testing.T) {
+	release := make(chan struct{})
+	released := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_, _ = io.WriteString(w, `{"a":1}`+"\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		<-release
+		_, _ = io.WriteString(w, `{"b":2}`+"\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+	defer upstream.Close()
+	defer func() {
+		if !released {
+			close(release)
+		}
+	}()
+
+	_, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	reqBody := `{"model":"m","messages":[{"role":"user","content":"hi"}]}`
+	resp, err := http.Post(proxySrv.URL+"/open/v1/chat/completions", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	lineCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			errCh <- err
+			return
+		}
+		lineCh <- line
+	}()
+	select {
+	case line := <-lineCh:
+		if line != `{"a":1}`+"\n" {
+			t.Fatalf("first line = %q", line)
+		}
+	case err := <-errCh:
+		t.Fatalf("read first line: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("first NDJSON line was not streamed")
+	}
+	close(release)
+	released = true
+	rest, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rest), `{"b":2}`) {
+		t.Fatalf("second line missing: %q", rest)
+	}
+}
+
 func TestProxyAuxiliaryRequestIsNotStored(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -568,9 +633,7 @@ func TestProxyAuxiliaryRequestIsNotStored(t *testing.T) {
 	io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	// Capture runs asynchronously; give the worker a moment to classify and discard.
-	time.Sleep(100 * time.Millisecond)
-
+	// Auxiliary traffic is forwarded but never captured.
 	reqs, err := st.ListAllRequests(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -642,7 +705,7 @@ func TestProxyDeepSeekCalculatedCost(t *testing.T) {
 	proxySrv := httptest.NewServer(h)
 	defer proxySrv.Close()
 
-	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/deepseek/chat/completions", strings.NewReader(`{"model":"deepseek-chat"}`))
+	req, _ := http.NewRequest(http.MethodPost, proxySrv.URL+"/deepseek/chat/completions", strings.NewReader(`{"model":"deepseek-chat","messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set("X-Session-Id", "ds-session")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

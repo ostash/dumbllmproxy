@@ -13,19 +13,12 @@ import (
 // a conversation request.
 var conversationInputKeys = []string{"messages", "input", "prompt", "contents"}
 
-// conversationOutputKeys are JSON fields that only appear in a generation
-// response. They are a fallback for requests whose body is not recognizable.
-var conversationOutputKeys = []string{"choices", "output"}
-
-// IsConversationRequest reports whether a captured exchange is a model
-// generation rather than auxiliary traffic such as model listings, presets or
-// health checks. Only conversation requests are stored; auxiliary traffic is
-// discarded after classification.
-func IsConversationRequest(requestBody, responseBody []byte) bool {
-	if hasNonEmptyField(requestBody, conversationInputKeys) {
-		return true
-	}
-	return hasNonEmptyField(responseBody, conversationOutputKeys)
+// IsConversationRequest reports whether a request body is a model generation
+// rather than auxiliary traffic such as model listings, presets or health
+// checks. Only conversation requests are captured; auxiliary traffic is
+// forwarded without buffering and discarded.
+func IsConversationRequest(requestBody []byte) bool {
+	return hasNonEmptyField(requestBody, conversationInputKeys)
 }
 
 func hasNonEmptyField(body []byte, keys []string) bool {
