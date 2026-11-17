@@ -64,6 +64,204 @@ func TestHostAllowlist(t *testing.T) {
 	}
 }
 
+func TestDeleteRequestAPI(t *testing.T) {
+	cfg := &config.Config{}
+	st, err := store.Open(filepath.Join(t.TempDir(), "delete-api.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	id, err := st.SaveRequest(ctx, &store.RequestRecord{
+		SessionKey:   "delete-api",
+		StartedAt:    now,
+		Method:       "POST",
+		Endpoint:     "/x",
+		Provider:     "p",
+		StatusCode:   200,
+		RequestBody:  []byte(`{}`),
+		ResponseBody: []byte(`{}`),
+		Parser:       "openai_chat",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := st.ListSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("unexpected sessions: %#v", sessions)
+	}
+	sessionID := sessions[0].ID
+
+	srv, err := server.New(cfg, st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	do := func(method, path string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(method, ts.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	checkStatus := func(resp *http.Response, want int) {
+		t.Helper()
+		defer resp.Body.Close()
+		if resp.StatusCode != want {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status = %d, want %d (body %q)", resp.StatusCode, want, body)
+		}
+	}
+
+	checkStatus(do(http.MethodDelete, "/api/requests/nope"), http.StatusBadRequest)
+	checkStatus(do(http.MethodDelete, "/api/requests/999999"), http.StatusNotFound)
+	checkStatus(do(http.MethodDelete, "/api/requests/"+strconv.FormatInt(id, 10)), http.StatusNoContent)
+	checkStatus(do(http.MethodGet, "/api/requests/"+strconv.FormatInt(id, 10)), http.StatusNotFound)
+	checkStatus(do(http.MethodGet, "/api/sessions/"+strconv.FormatInt(sessionID, 10)), http.StatusNotFound)
+
+	var count int
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, sessionID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("empty session row was not removed: %d", count)
+	}
+}
+
+func TestDeleteRequestsAPI(t *testing.T) {
+	cfg := &config.Config{}
+	st, err := store.Open(filepath.Join(t.TempDir(), "bulk-delete-api.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	save := func(offset int) int64 {
+		id, err := st.SaveRequest(ctx, &store.RequestRecord{
+			SessionKey:   "bulk-delete",
+			StartedAt:    now.Add(time.Duration(offset) * time.Second),
+			Method:       "POST",
+			Endpoint:     "/x",
+			Provider:     "p",
+			StatusCode:   200,
+			RequestBody:  []byte(`{}`),
+			ResponseBody: []byte(`{}`),
+			Parser:       "openai_chat",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	first := save(0)
+	second := save(1)
+	sessions, err := st.ListSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("unexpected sessions: %#v", sessions)
+	}
+	sessionID := sessions[0].ID
+
+	srv, err := server.New(cfg, st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	post := func(contentType, body string) *http.Response {
+		t.Helper()
+		resp, err := http.Post(ts.URL+"/api/requests/delete", contentType, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	checkStatus := func(resp *http.Response, want int) {
+		t.Helper()
+		defer resp.Body.Close()
+		if resp.StatusCode != want {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status = %d, want %d (body %q)", resp.StatusCode, want, body)
+		}
+	}
+
+	checkStatus(post("text/plain", `{"ids":[1]}`), http.StatusUnsupportedMediaType)
+	checkStatus(post("application/json", `{"ids":[]}`), http.StatusBadRequest)
+	checkStatus(post("application/json", `{"ids":`), http.StatusBadRequest)
+
+	tooMany := make([]int64, 1001)
+	for i := range tooMany {
+		tooMany[i] = int64(i + 1)
+	}
+	rawTooMany, err := json.Marshal(map[string]any{"ids": tooMany})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStatus(post("application/json", string(rawTooMany)), http.StatusBadRequest)
+
+	raw, err := json.Marshal(map[string]any{"ids": []int64{first, second}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := post("application/json", string(raw))
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("status = %d, want 200 (body %q)", resp.StatusCode, body)
+	}
+	var result struct {
+		Deleted int64 `json:"deleted"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		resp.Body.Close()
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if result.Deleted != 2 {
+		t.Fatalf("deleted = %d, want 2", result.Deleted)
+	}
+
+	getStatus := func(path string) int {
+		t.Helper()
+		resp, err := http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode
+	}
+	if status := getStatus("/api/requests/" + strconv.FormatInt(first, 10)); status != http.StatusNotFound {
+		t.Fatalf("request status = %d, want 404", status)
+	}
+	if status := getStatus("/api/sessions/" + strconv.FormatInt(sessionID, 10)); status != http.StatusNotFound {
+		t.Fatalf("session status = %d, want 404", status)
+	}
+
+	var count int
+	if err := st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, sessionID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("empty session row was not removed: %d", count)
+	}
+}
+
 func TestAPIAndStatic(t *testing.T) {
 	cfg := &config.Config{
 		Proxy: config.ProxyConfig{Listen: "127.0.0.1:0", Database: filepath.Join(t.TempDir(), "test.db")},

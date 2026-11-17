@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
 	"net"
 	"net/http"
 	"path"
@@ -58,6 +59,8 @@ func New(cfg *config.Config, st *store.Store, p *proxy.Handler) (*Server, error)
 	s.api.HandleFunc("GET /api/sessions/{id}", s.handleSession)
 	s.api.HandleFunc("GET /api/requests", s.handleRequests)
 	s.api.HandleFunc("GET /api/requests/{id}", s.handleRequest)
+	s.api.HandleFunc("DELETE /api/requests/{id}", s.handleDeleteRequest)
+	s.api.HandleFunc("POST /api/requests/delete", s.handleDeleteRequests)
 	s.api.HandleFunc("GET /api/facets", s.handleFacets)
 	s.api.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
@@ -393,6 +396,69 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		RequestDetail: detail,
 		Conversation:  tree,
 	})
+}
+
+func (s *Server) handleDeleteRequest(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request id")
+		return
+	}
+	deleted, err := s.store.DeleteRequest(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !deleted {
+		writeError(w, http.StatusNotFound, "request not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+const maxBulkDeleteIDs = 1000
+
+func (s *Server) handleDeleteRequests(w http.ResponseWriter, r *http.Request) {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeError(w, http.StatusUnsupportedMediaType, "content type must be application/json")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "ids must not be empty")
+		return
+	}
+	seen := make(map[int64]struct{}, len(body.IDs))
+	ids := make([]int64, 0, len(body.IDs))
+	for _, id := range body.IDs {
+		if id <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid request id")
+			return
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) > maxBulkDeleteIDs {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("at most %d ids are allowed", maxBulkDeleteIDs))
+		return
+	}
+	deleted, err := s.store.DeleteRequests(r.Context(), ids)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
 }
 
 func (s *Server) serveStatic(w http.ResponseWriter, r *http.Request) {

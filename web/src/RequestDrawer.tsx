@@ -19,14 +19,18 @@ type Props = {
   requestId: number;
   onClose: () => void;
   onOpenRequest?: (id: number) => void;
+  onDeleted: () => void;
 };
 
 type Tab = "payload" | "http" | "usage";
 
-export function RequestDrawer({ requestId, onClose, onOpenRequest }: Props) {
+export function RequestDrawer({ requestId, onClose, onOpenRequest, onDeleted }: Props) {
   const [detail, setDetail] = useState<RequestDetail | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("payload");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const asideRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -34,6 +38,9 @@ export function RequestDrawer({ requestId, onClose, onOpenRequest }: Props) {
     setDetail(null);
     setError("");
     setTab("payload");
+    setConfirmingDelete(false);
+    setDeleting(false);
+    setDeleteError("");
     api
       .request(requestId)
       .then((d) => {
@@ -78,6 +85,18 @@ export function RequestDrawer({ requestId, onClose, onOpenRequest }: Props) {
     };
   }, [onClose]);
 
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await api.deleteRequest(requestId);
+      onDeleted();
+    } catch (e) {
+      setDeleteError(String(e));
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="drawer-backdrop" onClick={onClose}>
       <aside
@@ -99,6 +118,13 @@ export function RequestDrawer({ requestId, onClose, onOpenRequest }: Props) {
             )}
           </div>
           <div className="drawer-actions">
+            <button
+              className="danger"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={confirmingDelete || deleting}
+            >
+              Delete
+            </button>
             {onOpenRequest && (
               <button className="secondary" onClick={() => onOpenRequest(requestId)}>
                 Open full request
@@ -107,6 +133,21 @@ export function RequestDrawer({ requestId, onClose, onOpenRequest }: Props) {
             <button className="icon-button" onClick={onClose} title="Close">×</button>
           </div>
         </header>
+
+        {confirmingDelete && (
+          <div className="danger-box">
+            <span>Delete request #{requestId}? This cannot be undone.</span>
+            <div className="danger-actions">
+              <button className="danger" onClick={handleDelete} disabled={deleting}>
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+              <button className="secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        {deleteError && <div className="error-box">{deleteError}</div>}
 
         {error && <div className="error-box">{error}</div>}
         {!detail && !error && <div className="empty">Loading…</div>}

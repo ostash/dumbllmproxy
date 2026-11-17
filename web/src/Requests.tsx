@@ -62,6 +62,10 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
   const [provider, setProvider] = useState(() => stringParam(initialParams, "provider"));
   const [model, setModel] = useState(() => stringParam(initialParams, "model"));
   const [harness, setHarness] = useState(() => stringParam(initialParams, "harness"));
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [deleteTargets, setDeleteTargets] = useState<number[] | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const since = useMemo(() => sinceForWindow(timeWindow), [timeWindow]);
   const debouncedFilter = useDebouncedValue(filter);
   const debouncedProvider = useDebouncedValue(provider);
@@ -125,6 +129,30 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     debouncedFilter, failed, incomplete, toolCalls, unassigned,
     debouncedProvider, debouncedModel, debouncedHarness
   ]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setDeleteTargets(null);
+    setDeleteError("");
+  }, [
+    page, pageSize, since, sortKey, sortDir, debouncedFilter, failed,
+    incomplete, toolCalls, unassigned, debouncedProvider, debouncedModel,
+    debouncedHarness
+  ]);
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const present = new Set(requests.map((request) => request.id));
+      let changed = false;
+      const next = new Set<number>();
+      for (const id of prev) {
+        if (present.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [requests]);
 
   useEffect(() => {
     if (!loading && page > 0 && total <= page * pageSize) {
@@ -198,6 +226,57 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     setModel("");
     setHarness("");
     setPage(0);
+  }
+
+  const pageIds = requests.map((request) => request.id);
+  const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+  const someSelected = pageIds.some((id) => selectedIds.has(id));
+
+  function toggleAll() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const id of pageIds) next.delete(id);
+      } else {
+        for (const id of pageIds) next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function confirmDelete() {
+    if (!deleteTargets?.length) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await api.deleteRequests(deleteTargets);
+      setDeleteTargets(null);
+      setSelectedIds(new Set());
+      setReloadKey((v) => v + 1);
+    } catch (e) {
+      setDeleteError(String(e));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function cancelDelete() {
+    if (deleting) return;
+    setDeleteTargets(null);
+    setDeleteError("");
   }
 
   return (
@@ -285,6 +364,35 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
         {loading && requests.length > 0 && <span className="muted small">Refreshing…</span>}
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="selection-bar">
+          <span>{selectedIds.size} selected</span>
+          <button className="danger" onClick={() => setDeleteTargets([...selectedIds])}>
+            Delete selected
+          </button>
+          <button className="secondary" onClick={clearSelection}>Clear</button>
+        </div>
+      )}
+      {deleteTargets && (
+        <div className="danger-box">
+          <span>
+            {deleteTargets.length === 1
+              ? `Delete request #${deleteTargets[0]}?`
+              : `Delete ${deleteTargets.length} requests?`}{" "}
+            This cannot be undone.
+          </span>
+          <div className="danger-actions">
+            <button className="danger" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+            <button className="secondary" onClick={cancelDelete} disabled={deleting}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {deleteError && <div className="error-box">{deleteError}</div>}
+
       {error && (
         <div className="error-box">
           {error}{" "}
@@ -299,6 +407,18 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
             <table>
               <thead>
                 <tr>
+                  <th className="checkbox-cell">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all requests on this page"
+                      checked={allSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someSelected && !allSelected;
+                      }}
+                      onChange={toggleAll}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </th>
                   <th className="clickable" onClick={() => toggleSort("id")}>ID{arrow("id")}</th>
                   <th className="clickable" onClick={() => toggleSort("started_at")}>Time{arrow("started_at")}</th>
                   <th>Session</th>
@@ -308,6 +428,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                   <th className="clickable" onClick={() => toggleSort("duration")}>Duration{arrow("duration")}</th>
                   <th className="clickable numeric" onClick={() => toggleSort("total_tokens")}>Tokens{arrow("total_tokens")}</th>
                   <th className="clickable numeric" onClick={() => toggleSort("cost_amount")}>Cost{arrow("cost_amount")}</th>
+                  <th className="actions-cell" aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -319,12 +440,22 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                     role="link"
                     onClick={() => onOpenRequest(r.id)}
                     onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         onOpenRequest(r.id);
                       }
                     }}
                   >
+                    <td className="checkbox-cell" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select request ${r.id}`}
+                        checked={selectedIds.has(r.id)}
+                        onChange={() => toggleSelected(r.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
                     <td className="request-number" title={`HTTP ${r.status_code || "ERR"}`}>#{r.id}</td>
                     <td className="nowrap" title={formatTime(r.started_at)}>{formatTimestamp(r.started_at)}</td>
                     <td>
@@ -374,11 +505,22 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                       )}
                     </td>
                     <td className="numeric">{formatCost(r.cost_amount)}</td>
+                    <td className="actions-cell" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="link-button danger-text"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTargets([r.id]);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {requests.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="empty-cell">
+                    <td colSpan={11} className="empty-cell">
                       No requests match these filters.
                       {activeFilterCount > 0 && (
                         <> <button className="link-button" onClick={clearFilters}>Clear filters</button></>

@@ -27,6 +27,7 @@ export function SessionInspector({ sessionId, refreshKey, onBack, onOpenRequest,
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>();
   const [selectedRequestIds, setSelectedRequestIds] = useState<number[]>([]);
   const [drawerRequestId, setDrawerRequestId] = useState<number | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const initialNodeApplied = useRef(false);
 
   useEffect(() => {
@@ -69,7 +70,7 @@ export function SessionInspector({ sessionId, refreshKey, onBack, onOpenRequest,
     return () => {
       cancelled = true;
     };
-  }, [sessionId, refreshKey]);
+  }, [sessionId, refreshKey, reloadKey]);
 
   function selectNode(node: ConversationNode) {
     setSelectedNodeId(node.id);
@@ -94,8 +95,27 @@ export function SessionInspector({ sessionId, refreshKey, onBack, onOpenRequest,
     window.history.replaceState(null, "", `#/session/${sessionId}`);
   }
 
+  function handleDeleted() {
+    const wasLast = detail ? detail.requests.length === 1 : false;
+    setDrawerRequestId(null);
+    setSelectedNodeId(undefined);
+    setSelectedRequestIds([]);
+    if (wasLast) {
+      onBack();
+    } else {
+      setReloadKey((v) => v + 1);
+    }
+  }
+
   if (loading && !detail) return <main className="page"><div className="empty">Loading session…</div></main>;
-  if (error && !detail) return <main className="page"><div className="error-box">{error}</div></main>;
+  if (error && !detail) {
+    return (
+      <main className="page">
+        <button className="back-button" onClick={onBack}>← Sessions</button>
+        <div className="error-box">{error}</div>
+      </main>
+    );
+  }
   if (!detail) return null;
 
   const summary = detail.summary;
@@ -181,6 +201,7 @@ export function SessionInspector({ sessionId, refreshKey, onBack, onOpenRequest,
           requestId={drawerRequestId}
           onClose={() => setDrawerRequestId(null)}
           onOpenRequest={onOpenRequest}
+          onDeleted={handleDeleted}
         />
       )}
     </main>

@@ -70,5 +70,36 @@ export const api = {
   requests: (params: ListParams = {}) =>
     getJSON<ListResult<{ requests: RequestSummary[] }>>(withQuery("/api/requests", params)),
   request: (id: number) => getJSON<RequestDetail>(`/api/requests/${id}`),
+  deleteRequest: async (id: number) => {
+    const res = await fetch(`/api/requests/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      let message = `${res.status} ${res.statusText}`;
+      try {
+        const body = await res.json();
+        if (body?.error) message = body.error;
+      } catch {
+        // ignore
+      }
+      throw new Error(message);
+    }
+  },
+  deleteRequests: async (ids: number[]) => {
+    const res = await fetch("/api/requests/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids })
+    });
+    if (!res.ok) {
+      let message = `${res.status} ${res.statusText}`;
+      try {
+        const body = await res.json();
+        if (body?.error) message = body.error;
+      } catch {
+        // ignore
+      }
+      throw new Error(message);
+    }
+    return (await res.json()) as { deleted: number };
+  },
   facets: () => getJSON<Facets>("/api/facets")
 };

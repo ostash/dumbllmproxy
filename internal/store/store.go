@@ -327,6 +327,107 @@ func (s *Store) SaveRequest(ctx context.Context, rec *RequestRecord) (int64, err
 	return id, nil
 }
 
+// DeleteRequest removes one captured request. If it was the last request in
+// its session, the now-empty session row is removed as well.
+func (s *Store) DeleteRequest(ctx context.Context, id int64) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	var sessionID sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT session_id FROM requests WHERE id = ?`, id).Scan(&sessionID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	res, err := tx.ExecContext(ctx, `DELETE FROM requests WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	deleted, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if deleted == 0 {
+		return false, nil
+	}
+	if sessionID.Valid {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM sessions
+			WHERE id = ? AND NOT EXISTS (SELECT 1 FROM requests WHERE session_id = ?)`,
+			sessionID.Int64, sessionID.Int64); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// DeleteRequests removes a batch of captured requests in one transaction and
+// drops session rows that no longer have any requests. Missing or duplicate
+// IDs are ignored.
+func (s *Store) DeleteRequests(ctx context.Context, ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	seen := make(map[int64]struct{}, len(ids))
+	affectedSessions := make(map[int64]struct{})
+	var deleted int64
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+
+		var sessionID sql.NullInt64
+		if err := tx.QueryRowContext(ctx, `SELECT session_id FROM requests WHERE id = ?`, id).Scan(&sessionID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return 0, err
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM requests WHERE id = ?`, id)
+		if err != nil {
+			return 0, err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			continue
+		}
+		deleted += n
+		if sessionID.Valid {
+			affectedSessions[sessionID.Int64] = struct{}{}
+		}
+	}
+	for sessionID := range affectedSessions {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM sessions
+			WHERE id = ? AND NOT EXISTS (SELECT 1 FROM requests WHERE session_id = ?)`,
+			sessionID, sessionID); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return deleted, nil
+}
+
 // Facets returns the distinct provider, model and harness values present in
 // captured requests, for filter suggestions.
 func (s *Store) Facets(ctx context.Context) (Facets, error) {

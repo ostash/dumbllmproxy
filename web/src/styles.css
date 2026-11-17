@@ -339,6 +339,75 @@ select {
   border-color: var(--border-strong);
 }
 
+.danger {
+  border: 1px solid #f0b4b4;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 7px 11px;
+}
+
+.danger:hover:not(:disabled) {
+  background: #fde8e6;
+  border-color: #e89a95;
+}
+
+.danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.danger-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 11px 13px;
+  margin: 12px 0;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid #fecdca;
+  border-radius: 9px;
+}
+
+.danger-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.danger-text {
+  color: var(--danger);
+}
+
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 13px;
+  margin: 12px 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.checkbox-cell {
+  width: 34px;
+  text-align: center;
+}
+
+.checkbox-cell input {
+  cursor: pointer;
+}
+
+.actions-cell {
+  width: 72px;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .button-row {
   display: flex;
   align-items: center;

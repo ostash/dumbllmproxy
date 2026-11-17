@@ -36,6 +36,9 @@ export function RequestInspector({
   const [loading, setLoading] = useState(true);
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>();
   const [paneMode, setPaneMode] = useState<PaneMode>("conversation");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const lastRequestId = useRef(requestId);
 
@@ -45,6 +48,9 @@ export function RequestInspector({
       setDetail(null);
       setSelectedNodeId(undefined);
       setPaneMode("conversation");
+      setConfirmingDelete(false);
+      setDeleting(false);
+      setDeleteError("");
     }
   }, [requestId]);
 
@@ -74,6 +80,18 @@ export function RequestInspector({
       cancelled = true;
     };
   }, [requestId, refreshKey]);
+
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await api.deleteRequest(requestId);
+      onBack();
+    } catch (e) {
+      setDeleteError(String(e));
+      setDeleting(false);
+    }
+  }
 
   if (loading && !detail) return <main className="page"><div className="empty">Loading request…</div></main>;
   if (error && !detail) return <main className="page"><div className="error-box">{error}</div></main>;
@@ -145,7 +163,29 @@ export function RequestInspector({
           <Stat label="Cost" value={formatCost(detail.cost_amount)} />
           <Stat label="Session" value={detail.session_key || "unassigned"} />
         </div>
+        <button
+          className="danger"
+          onClick={() => setConfirmingDelete(true)}
+          disabled={confirmingDelete || deleting}
+        >
+          Delete
+        </button>
       </div>
+
+      {confirmingDelete && (
+        <div className="danger-box">
+          <span>Delete request #{detail.id}? This cannot be undone.</span>
+          <div className="danger-actions">
+            <button className="danger" onClick={handleDelete} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+            <button className="secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {deleteError && <div className="error-box">{deleteError}</div>}
 
       {detail.parse_error && (
         <div className="warn-box">
