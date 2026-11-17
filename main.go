@@ -74,15 +74,22 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	shutdownDone := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(shutdownCtx)
+		close(shutdownDone)
 	}()
 
 	logger.Printf("dumbllmproxy listening on http://%s (database: %s)", cfg.Proxy.Listen, cfg.Proxy.Database)
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("serve: %v", err)
 	}
+	select {
+	case <-shutdownDone:
+	case <-time.After(6 * time.Second):
+	}
+	proxyHandler.Close()
 }

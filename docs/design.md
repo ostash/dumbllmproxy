@@ -35,6 +35,8 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
 - Store request/response bodies, status, content types, model, session, harness, configured metadata, usage, and
   provider-reported cost.
 - Timestamps are fixed-width UTC text so they sort chronologically.
+- Capture runs asynchronously after the response is forwarded. The handler enqueues a job; a single worker decodes,
+  reconstructs, classifies, and saves. Capture must not block the response path.
 
 ## Streaming reconstruction
 

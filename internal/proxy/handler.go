@@ -32,6 +32,9 @@ type Handler struct {
 	store  *store.Store
 	client *http.Client
 	logger *log.Logger
+
+	captureQueue chan captureJob
+	captureDone  chan struct{}
 }
 
 func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Handler {
@@ -43,7 +46,7 @@ func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Handler {
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}).DialContext
-	return &Handler{
+	h := &Handler{
 		cfg:   cfg,
 		store: st,
 		client: &http.Client{
@@ -53,8 +56,147 @@ func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Handler {
 				return http.ErrUseLastResponse
 			},
 		},
-		logger: logger,
+		logger:       logger,
+		captureQueue: make(chan captureJob, 256),
+		captureDone:  make(chan struct{}),
 	}
+	go h.captureWorker()
+	return h
+}
+
+// Close drains pending captures and stops the worker. Call it after the HTTP
+// server has stopped accepting requests.
+func (h *Handler) Close() {
+	close(h.captureQueue)
+	<-h.captureDone
+}
+
+type captureJob struct {
+	up                  *config.UpstreamConfig
+	requestBody         []byte
+	rawResponseBody     []byte
+	contentEncoding     string
+	streamed            bool
+	startedAt           time.Time
+	completedAt         *time.Time
+	method              string
+	endpoint            string
+	provider            string
+	statusCode          int
+	requestContentType  string
+	responseContentType string
+	metadata            map[string]any
+	model               string
+	sessionKey          string
+	harness             string
+	readIncomplete      bool
+	readParseError      string
+
+	// record is set for failures, which are saved without decoding a response.
+	record *store.RequestRecord
+}
+
+func (h *Handler) enqueue(job captureJob) {
+	h.captureQueue <- job
+}
+
+func (h *Handler) captureWorker() {
+	defer close(h.captureDone)
+	for job := range h.captureQueue {
+		h.processCapture(job)
+	}
+}
+
+func (h *Handler) processCapture(job captureJob) {
+	if job.record != nil {
+		h.save(job.record)
+		return
+	}
+	responseBody, rawFallback, incomplete, parseError := decodeResponse(job)
+	if !openai.IsConversationRequest(job.requestBody, responseBody) {
+		return
+	}
+	captured := h.capture(job.up, job.requestBody, responseBody)
+	captured.Model = job.model
+	captured.RawResponseBody = rawFallback
+	captured.Incomplete = incomplete
+	captured.ParseError = parseError
+	rec := &store.RequestRecord{
+		SessionKey:          job.sessionKey,
+		Harness:             job.harness,
+		StartedAt:           job.startedAt,
+		CompletedAt:         job.completedAt,
+		Method:              job.method,
+		Endpoint:            job.endpoint,
+		Provider:            job.provider,
+		Model:               captured.Model,
+		StatusCode:          job.statusCode,
+		RequestContentType:  job.requestContentType,
+		ResponseContentType: job.responseContentType,
+		MetadataJSON:        marshalJSON(job.metadata),
+		RequestBody:         captured.RequestBody,
+		ResponseBody:        captured.ResponseBody,
+		RawResponseBody:     captured.RawResponseBody,
+		Streamed:            job.streamed,
+		Incomplete:          captured.Incomplete,
+		HasToolCalls:        captured.HasToolCalls,
+		Parser:              job.up.Parser,
+		Pricing:             job.up.Pricing,
+		ParseError:          captured.ParseError,
+		UsageJSON:           captured.UsageJSON,
+		InputTokens:         captured.Usage.InputTokens,
+		OutputTokens:        captured.Usage.OutputTokens,
+		CachedInputTokens:   captured.Usage.CachedInputTokens,
+		CacheReadTokens:     captured.Usage.CacheReadTokens,
+		CacheWriteTokens:    captured.Usage.CacheWriteTokens,
+		ReasoningTokens:     captured.Usage.ReasoningTokens,
+		TotalTokens:         captured.Usage.TotalTokens,
+		ProviderCost:        captured.ProviderCost,
+	}
+	h.save(rec)
+}
+
+func decodeResponse(job captureJob) (responseBody, rawFallback []byte, incomplete bool, parseError string) {
+	decoded, decodeErr := capture.Decode(job.rawResponseBody, job.contentEncoding)
+	if decodeErr != nil {
+		if job.streamed {
+			return job.rawResponseBody, job.rawResponseBody, true, "response decode: " + decodeErr.Error()
+		}
+		parseError = job.readParseError
+		if parseError == "" {
+			parseError = "response decode: " + decodeErr.Error()
+		}
+		return job.rawResponseBody, nil, job.readIncomplete, parseError
+	}
+	if !job.streamed {
+		return decoded, nil, job.readIncomplete, job.readParseError
+	}
+	if job.up.Parser != "openai_chat" {
+		return decoded, nil, job.readIncomplete, job.readParseError
+	}
+	recon := openai.NewStreamReconstructor()
+	recon.Feed(decoded)
+	reconBody, complete, reconErr := recon.Finish()
+	if reconBody != nil {
+		responseBody = reconBody
+	} else {
+		responseBody = decoded
+	}
+	streamComplete := complete && reconErr == nil
+	if !complete || reconErr != nil {
+		rawFallback = decoded
+		incomplete = true
+	}
+	if reconErr != nil {
+		parseError = reconErr.Error()
+	}
+	if job.readIncomplete && !streamComplete {
+		incomplete = true
+		if parseError == "" {
+			parseError = job.readParseError
+		}
+	}
+	return responseBody, rawFallback, incomplete, parseError
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +260,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	streamed := isEventStream(resp.Header.Get("Content-Type"))
 	var completedAt *time.Time
-	var responseBody, rawResponseBody []byte
+	var rawResponse []byte
 	var incomplete bool
 	var streamParseError string
 
@@ -155,119 +297,52 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		now := time.Now().UTC()
 		completedAt = &now
-
-		streamComplete := false
-		decodedStream, decodeErr := capture.Decode(rawStream.Bytes(), contentEncoding(resp.Header))
-		if decodeErr != nil {
-			responseBody = rawStream.Bytes()
-			rawResponseBody = rawStream.Bytes()
+		rawResponse = rawStream.Bytes()
+		if readErr != nil {
 			incomplete = true
-			streamParseError = "response decode: " + decodeErr.Error()
-		} else if up.Parser == "openai_chat" {
-			recon := openai.NewStreamReconstructor()
-			recon.Feed(decodedStream)
-			reconBody, complete, parseErr := recon.Finish()
-			streamComplete = complete && parseErr == nil
-			if reconBody != nil {
-				responseBody = reconBody
-			} else {
-				responseBody = decodedStream
-			}
-			if !complete || parseErr != nil {
-				rawResponseBody = decodedStream
-				incomplete = true
-			}
-			if parseErr != nil {
-				streamParseError = parseErr.Error()
-			}
-		} else {
-			// Unknown stream format: preserve the decoded stream as one raw blob.
-			responseBody = decodedStream
-		}
-		// A read error after a complete stream is usually the client closing
-		// the connection after [DONE]. The logical response is already
-		// complete, so it must not be marked incomplete.
-		if readErr != nil && !streamComplete {
-			incomplete = true
-			if streamParseError == "" {
-				streamParseError = "stream read: " + readErr.Error()
-			}
+			streamParseError = "stream read: " + readErr.Error()
 		}
 	} else {
 		raw, readErr := io.ReadAll(resp.Body)
 		now := time.Now().UTC()
 		completedAt = &now
+		rawResponse = raw
 		if readErr != nil {
 			incomplete = true
 			streamParseError = "response read: " + readErr.Error()
 		}
-		decoded, decodeErr := capture.Decode(raw, contentEncoding(resp.Header))
-		responseBody = decoded
-		if decodeErr != nil {
-			responseBody = raw
-			if streamParseError == "" {
-				streamParseError = "response decode: " + decodeErr.Error()
-			}
-		}
 		w.WriteHeader(resp.StatusCode)
 		if len(raw) > 0 {
 			if _, err := w.Write(raw); err != nil {
-				// The response was already sent as far as the client is concerned.
 				h.logger.Printf("client write failed for %s: %v", r.URL.Path, err)
 			}
 		}
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
 	}
 
-	if streamParseError != "" {
-		parseErrors = append(parseErrors, streamParseError)
-	}
-
-	// Auxiliary traffic (model listings, presets, health checks) is not stored.
-	// It is classified here, after the response is available, and discarded.
-	if !openai.IsConversationRequest(storedRequestBody, responseBody) {
-		return
-	}
-
-	captured := h.capture(up, storedRequestBody, responseBody, startedAt)
-	if rawResponseBody != nil {
-		captured.RawResponseBody = rawResponseBody
-	}
-	captured.Incomplete = incomplete
-	captured.ParseError = strings.Join(parseErrors, "; ")
-
-	rec := &store.RequestRecord{
-		SessionKey:          sessionKey,
-		Harness:             harness,
-		StartedAt:           startedAt,
-		CompletedAt:         completedAt,
-		Method:              r.Method,
-		Endpoint:            requestEndpoint(up, r),
-		Provider:            up.Name,
-		Model:               captured.Model,
-		StatusCode:          resp.StatusCode,
-		RequestContentType:  r.Header.Get("Content-Type"),
-		ResponseContentType: resp.Header.Get("Content-Type"),
-		MetadataJSON:        marshalJSON(metadata),
-		RequestBody:         captured.RequestBody,
-		ResponseBody:        captured.ResponseBody,
-		RawResponseBody:     captured.RawResponseBody,
-		Streamed:            streamed,
-		Incomplete:          captured.Incomplete,
-		HasToolCalls:        captured.HasToolCalls,
-		Parser:              up.Parser,
-		Pricing:             up.Pricing,
-		ParseError:          captured.ParseError,
-		UsageJSON:           captured.UsageJSON,
-		InputTokens:         captured.Usage.InputTokens,
-		OutputTokens:        captured.Usage.OutputTokens,
-		CachedInputTokens:   captured.Usage.CachedInputTokens,
-		CacheReadTokens:     captured.Usage.CacheReadTokens,
-		CacheWriteTokens:    captured.Usage.CacheWriteTokens,
-		ReasoningTokens:     captured.Usage.ReasoningTokens,
-		TotalTokens:         captured.Usage.TotalTokens,
-		ProviderCost:        captured.ProviderCost,
-	}
-	h.save(rec)
+	h.enqueue(captureJob{
+		up:                  up,
+		requestBody:         storedRequestBody,
+		rawResponseBody:     rawResponse,
+		contentEncoding:     contentEncoding(resp.Header),
+		streamed:            streamed,
+		startedAt:           startedAt,
+		completedAt:         completedAt,
+		method:              r.Method,
+		endpoint:            requestEndpoint(up, r),
+		provider:            up.Name,
+		statusCode:          resp.StatusCode,
+		requestContentType:  r.Header.Get("Content-Type"),
+		responseContentType: resp.Header.Get("Content-Type"),
+		metadata:            metadata,
+		model:               model,
+		sessionKey:          sessionKey,
+		harness:             harness,
+		readIncomplete:      incomplete,
+		readParseError:      streamParseError,
+	})
 }
 
 type captureResult struct {
@@ -283,11 +358,10 @@ type captureResult struct {
 	ProviderCost    *float64
 }
 
-func (h *Handler) capture(up *config.UpstreamConfig, requestBody, responseBody []byte, startedAt time.Time) captureResult {
+func (h *Handler) capture(up *config.UpstreamConfig, requestBody, responseBody []byte) captureResult {
 	result := captureResult{
 		RequestBody:  requestBody,
 		ResponseBody: responseBody,
-		Model:        openai.ExtractModel(requestBody),
 	}
 	if up.Parser == "openai_chat" {
 		result.HasToolCalls = openai.HasToolCalls(responseBody)
@@ -397,8 +471,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, up *config.Upstre
 		Pricing:            up.Pricing,
 		ParseError:         strings.Join(parseErrors, "; "),
 	}
-	h.save(rec)
 	http.Error(w, "upstream request failed", http.StatusBadGateway)
+	h.enqueue(captureJob{record: rec})
 }
 
 func extractHeaders(header http.Header, matchers []config.HeaderMatcher, prefix string) map[string]any {

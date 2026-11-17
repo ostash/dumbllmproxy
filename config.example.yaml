@@ -10,7 +10,7 @@ proxy:
 upstreams:
   - name: openrouter
     prefix: /openrouter
-    base_url: https://openrouter.ai/api
+    base_url: https://openrouter.ai/
     parser: openai_chat     # openai_chat or none
     pricing: openrouter     # openrouter, deepseek, or none
 

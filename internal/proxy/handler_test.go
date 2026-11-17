@@ -61,6 +61,7 @@ func newTestProxyWithConfig(t *testing.T, cfg *config.Config) (*store.Store, *ht
 	srv := httptest.NewServer(h)
 	t.Cleanup(func() {
 		srv.Close()
+		h.Close()
 		st.Close()
 	})
 	return st, srv
@@ -131,10 +132,7 @@ func TestProxyNonStreamingAndOpenRouterCost(t *testing.T) {
 		t.Fatalf("authorization header was not passed through")
 	}
 
-	sessions, err := st.ListSessions(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	sessions := waitForSessions(t, st)
 	if len(sessions) != 1 || sessions[0].SessionKey != "sess-1" {
 		t.Fatalf("unexpected sessions: %#v", sessions)
 	}
@@ -419,6 +417,20 @@ func TestProxyCanceledStreamWithoutDoneIsIncomplete(t *testing.T) {
 	}
 }
 
+func waitForSessions(t *testing.T, st *store.Store) []store.SessionSummary {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		sessions, err := st.ListSessions(context.Background())
+		if err == nil && len(sessions) > 0 {
+			return sessions
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for captured session")
+	return nil
+}
+
 func waitForSessionID(t *testing.T, st *store.Store) int64 {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -556,7 +568,7 @@ func TestProxyAuxiliaryRequestIsNotStored(t *testing.T) {
 	io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	// The handler saves synchronously; give it a moment to finish.
+	// Capture runs asynchronously; give the worker a moment to classify and discard.
 	time.Sleep(100 * time.Millisecond)
 
 	reqs, err := st.ListAllRequests(context.Background())
@@ -676,10 +688,7 @@ func TestProxySessionHeaderFallbackOrder(t *testing.T) {
 	io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	sessions, err := st.ListSessions(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	sessions := waitForSessions(t, st)
 	if len(sessions) != 1 || sessions[0].SessionKey != "conv-fallback" {
 		t.Fatalf("unexpected sessions: %#v", sessions)
 	}
@@ -797,10 +806,7 @@ func TestProxyMetadataHeaderRegex(t *testing.T) {
 	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
-	sessions, err := st.ListSessions(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	sessions := waitForSessions(t, st)
 	reqs := waitForRequests(t, st, sessions[0].ID)
 	detail, err := st.GetRequest(context.Background(), reqs[0].ID)
 	if err != nil {
@@ -891,10 +897,7 @@ func TestProxyPersistsOnlyAllowlistedHeaders(t *testing.T) {
 	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
-	sessions, err := st.ListSessions(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	sessions := waitForSessions(t, st)
 	if len(sessions) != 1 || sessions[0].SessionKey != "sess-allowlist" {
 		t.Fatalf("unexpected sessions: %#v", sessions)
 	}
