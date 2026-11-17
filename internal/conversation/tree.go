@@ -107,7 +107,7 @@ func (b *builder) findOrCreate(parent *Node, raw json.RawMessage, requestID int6
 	}
 	describe(node, raw)
 	parent.Children = append(parent.Children, node)
-	if parent == nil || parent.ID == "" {
+	if parent.ID == "" {
 		b.roots = append(b.roots, node)
 	}
 	return node
