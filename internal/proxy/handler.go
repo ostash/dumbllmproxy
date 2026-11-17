@@ -64,8 +64,9 @@ func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Handler {
 	return h
 }
 
-// Close drains pending captures and stops the worker. Call it after the HTTP
-// server has stopped accepting requests.
+// Close drains pending captures and stops the worker. Call it only after the
+// HTTP server has finished all in-flight requests, so no handler can enqueue
+// after the queue is closed.
 func (h *Handler) Close() {
 	close(h.captureQueue)
 	<-h.captureDone

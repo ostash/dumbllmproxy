@@ -77,9 +77,12 @@ func main() {
 	shutdownDone := make(chan struct{})
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = httpServer.Shutdown(shutdownCtx)
+		// Restore the default signal behavior so a second signal forces exit.
+		stop()
+		logger.Printf("shutting down; send the signal again to force exit")
+		if err := httpServer.Shutdown(context.Background()); err != nil {
+			logger.Printf("shutdown: %v", err)
+		}
 		close(shutdownDone)
 	}()
 
@@ -87,9 +90,6 @@ func main() {
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("serve: %v", err)
 	}
-	select {
-	case <-shutdownDone:
-	case <-time.After(6 * time.Second):
-	}
+	<-shutdownDone
 	proxyHandler.Close()
 }
