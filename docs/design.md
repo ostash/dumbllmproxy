@@ -16,6 +16,8 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
 
 - Route by longest configured path prefix. Strip the prefix and append the remaining path and query to `base_url`.
   `/api` is reserved; `/` is rejected.
+- Preserve the client's percent-encoded path when joining the remainder to `base_url`; do not re-encode `%2F` and
+  similar escapes.
 - Forward method, path, query, headers, body, status, and response headers. Handle hop-by-hop headers in both
   directions; drop `Connection` and every header it names.
 - Do not inject or manage credentials. Forward client headers unchanged.

@@ -38,6 +38,53 @@ func TestTargetURLPrefixRoot(t *testing.T) {
 	}
 }
 
+func TestTargetURLPreservesEncodedPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		prefix  string
+		baseURL string
+		in      string
+		want    string
+	}{
+		{
+			name: "encoded slash", prefix: "/open", baseURL: "https://example.com/api",
+			in: "http://localhost/open/a%2Fb?x=1", want: "https://example.com/api/a%2Fb?x=1",
+		},
+		{
+			name: "lowercase encoded slash", prefix: "/open", baseURL: "https://example.com/api",
+			in: "http://localhost/open/a%2fb", want: "https://example.com/api/a%2fb",
+		},
+		{
+			name: "encoded separator", prefix: "/open", baseURL: "https://example.com/api",
+			in: "http://localhost/open%2Ffoo", want: "https://example.com/api%2Ffoo",
+		},
+		{
+			name: "root prefix", prefix: "/", baseURL: "http://example.com/api",
+			in: "http://localhost/a%2Fb", want: "http://example.com/api/a%2Fb",
+		},
+		{
+			name: "encoded base path", prefix: "/open", baseURL: "https://example.com/base%2Fv1",
+			in: "http://localhost/open/a%2Fb", want: "https://example.com/base%2Fv1/a%2Fb",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			u := UpstreamConfig{Prefix: tc.prefix, BaseURL: tc.baseURL}
+			in, err := url.Parse(tc.in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := u.TargetURL(in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := out.String(); got != tc.want {
+				t.Fatalf("TargetURL() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestMatchUpstreamLongestPrefix(t *testing.T) {
 	cfg := &Config{
 		Upstreams: []UpstreamConfig{

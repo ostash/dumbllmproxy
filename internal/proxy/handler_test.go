@@ -665,6 +665,34 @@ func TestProxyAbortsTruncatedNonSSEResponse(t *testing.T) {
 	}
 }
 
+func TestProxyForwardsEncodedPath(t *testing.T) {
+	gotURI := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURI <- r.RequestURI
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`)
+	}))
+	defer upstream.Close()
+
+	_, proxySrv := newTestProxy(t, upstream.URL, "openai_chat", "none")
+	reqBody := `{"model":"m","messages":[{"role":"user","content":"hi"}]}`
+	resp, err := http.Post(proxySrv.URL+"/open/a%2Fb?x=1", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	select {
+	case uri := <-gotURI:
+		if uri != "/a%2Fb?x=1" {
+			t.Fatalf("upstream URI = %q, want %q", uri, "/a%2Fb?x=1")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("upstream did not receive the request")
+	}
+}
+
 func TestProxyAuxiliaryRequestIsNotStored(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

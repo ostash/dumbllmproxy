@@ -305,13 +305,39 @@ func (u *UpstreamConfig) TargetURL(in *url.URL) (*url.URL, error) {
 		return nil, err
 	}
 	rest := u.RemainingPath(in.Path)
+	restEscaped := u.escapedRemainingPath(in)
 	target := *base
 	target.Path = joinURLPath(base.Path, rest)
-	target.RawPath = ""
+	target.RawPath = joinEscapedPath(base.EscapedPath(), restEscaped)
 	if in.RawQuery != "" {
 		target.RawQuery = in.RawQuery
 	}
 	return &target, nil
+}
+
+// escapedRemainingPath is RemainingPath for the escaped request path. It keeps
+// the client's percent-encoding instead of re-encoding the decoded path.
+func (u *UpstreamConfig) escapedRemainingPath(in *url.URL) string {
+	escaped := in.EscapedPath()
+	if u.Prefix == "/" {
+		return escaped
+	}
+	prefix := (&url.URL{Path: u.Prefix}).EscapedPath()
+	if escaped == prefix {
+		return ""
+	}
+	if strings.HasPrefix(escaped, prefix+"/") {
+		return strings.TrimPrefix(escaped, prefix)
+	}
+	if strings.HasPrefix(escaped, prefix) {
+		rest := strings.TrimPrefix(escaped, prefix)
+		if hasLeadingEncodedSlash(rest) {
+			return rest
+		}
+	}
+	// The client encoded part of the prefix differently. Fall back to the
+	// default encoding of the decoded remainder.
+	return (&url.URL{Path: u.RemainingPath(in.Path)}).EscapedPath()
 }
 
 func joinURLPath(base, rest string) string {
@@ -325,4 +351,31 @@ func joinURLPath(base, rest string) string {
 		return rest
 	}
 	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(rest, "/")
+}
+
+func joinEscapedPath(base, rest string) string {
+	if rest == "" {
+		if base == "" {
+			return "/"
+		}
+		return base
+	}
+	if base == "" {
+		if hasLeadingEncodedSlash(rest) {
+			// URL.String adds a literal leading slash when a host is set.
+			// Normalize the separator so RawPath stays a valid encoding of Path.
+			return "/" + rest[3:]
+		}
+		return rest
+	}
+	base = strings.TrimRight(base, "/")
+	if hasLeadingEncodedSlash(rest) {
+		// The encoded slash already separates base and rest.
+		return base + rest
+	}
+	return base + "/" + strings.TrimLeft(rest, "/")
+}
+
+func hasLeadingEncodedSlash(s string) bool {
+	return len(s) >= 3 && s[0] == '%' && s[1] == '2' && (s[2] == 'F' || s[2] == 'f')
 }
