@@ -25,6 +25,45 @@ import (
 	"dumbllmproxy/internal/store"
 )
 
+func TestHostAllowlist(t *testing.T) {
+	cfg := &config.Config{}
+	st, err := store.Open(filepath.Join(t.TempDir(), "hostcheck.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	srv, err := server.New(cfg, st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		host string
+		want int
+	}{
+		{"localhost:8080", http.StatusOK},
+		{"LOCALHOST:8080", http.StatusOK},
+		{"127.0.0.1:8080", http.StatusOK},
+		{"127.0.0.2:8080", http.StatusOK},
+		{"[::1]:8080", http.StatusOK},
+		{"evil.example:8080", http.StatusForbidden},
+		{"198.51.100.1:8080", http.StatusForbidden},
+		{"0.0.0.0:8080", http.StatusForbidden},
+		{"", http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		t.Run(tc.host, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "http://example.com/api/facets", nil)
+			req.Host = tc.host
+			rec := httptest.NewRecorder()
+			srv.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("host %q: got %d, want %d (body %q)", tc.host, rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestAPIAndStatic(t *testing.T) {
 	cfg := &config.Config{
 		Proxy: config.ProxyConfig{Listen: "127.0.0.1:0", Database: filepath.Join(t.TempDir(), "test.db")},

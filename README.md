@@ -15,7 +15,7 @@ local web UI for inspecting conversations and HTTP exchanges.
 - Search, filters, sorting, pagination, and URL-preserved list state.
 - Token usage and cost, including provider-reported and calculated costs.
 - Single Go executable with embedded React frontend and local SQLite database.
-- Binds to localhost; no authentication.
+- Binds to localhost and rejects non-local Host headers; no authentication.
 
 ## Build
 

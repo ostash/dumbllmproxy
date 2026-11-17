@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"path"
 	"strconv"
@@ -34,6 +35,7 @@ type Server struct {
 	// placeholder is embedded). The UI then explains how to build it instead of
 	// returning a bare 404.
 	hasIndex bool
+	localIPs []net.IP
 }
 
 func New(cfg *config.Config, st *store.Store, p *proxy.Handler) (*Server, error) {
@@ -50,6 +52,7 @@ func New(cfg *config.Config, st *store.Store, p *proxy.Handler) (*Server, error)
 		static:   http.FileServer(http.FS(sub)),
 		fsys:     sub,
 		hasIndex: indexErr == nil,
+		localIPs: localInterfaceIPs(),
 	}
 	s.api.HandleFunc("GET /api/sessions", s.handleSessions)
 	s.api.HandleFunc("GET /api/sessions/{id}", s.handleSession)
@@ -63,6 +66,10 @@ func New(cfg *config.Config, st *store.Store, p *proxy.Handler) (*Server, error)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.hostAllowed(r.Host) {
+		http.Error(w, "forbidden host", http.StatusForbidden)
+		return
+	}
 	switch {
 	case r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/"):
 		s.api.ServeHTTP(w, r)
@@ -71,6 +78,73 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.serveStatic(w, r)
 	}
+}
+
+// hostAllowed reports whether the Host header names this machine. Accepting
+// only localhost and local interface addresses blocks DNS rebinding while
+// still allowing access through a LAN address. It is not authentication.
+func (s *Server) hostAllowed(hostport string) bool {
+	host := hostOnly(hostport)
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if i := strings.LastIndexByte(host, '%'); i >= 0 {
+		host = host[:i]
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	for _, local := range s.localIPs {
+		if local.Equal(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func hostOnly(hostport string) string {
+	hostport = strings.TrimSpace(hostport)
+	if host, _, err := net.SplitHostPort(hostport); err == nil {
+		return strings.TrimSuffix(strings.Trim(host, "[]"), ".")
+	}
+	return strings.TrimSuffix(strings.Trim(hostport, "[]"), ".")
+}
+
+func localInterfaceIPs() []net.IP {
+	seen := map[string]struct{}{}
+	var out []net.IP
+	add := func(ip net.IP) {
+		if ip == nil {
+			return
+		}
+		key := ip.String()
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, ip)
+	}
+	add(net.IPv4(127, 0, 0, 1))
+	add(net.IPv6loopback)
+	addrs, err := net.InterfaceAddrs()
+	if err == nil {
+		for _, addr := range addrs {
+			switch v := addr.(type) {
+			case *net.IPNet:
+				add(v.IP)
+			case *net.IPAddr:
+				add(v.IP)
+			}
+		}
+	}
+	return out
 }
 
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,8 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
 
 - A local, single-user request logger, not a general-purpose LLM gateway.
 - No authentication, multi-user support, plugin system, or credential management.
+- Accept only `localhost` and the machine's local interface addresses in the Host header. This blocks DNS rebinding; it
+  is not authentication.
 - Provider-agnostic forwarding. Provider-specific parsing, usage extraction, and cost calculation must not affect
   forwarding.
 
