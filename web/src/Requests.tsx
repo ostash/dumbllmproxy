@@ -39,12 +39,10 @@ function requestRowClass(r: RequestSummary): string {
   return "clickable-row";
 }
 
-function isNonSuccess(status: number): boolean {
-  return status < 200 || status >= 300;
-}
-
-function statusChipClass(status: number): string {
-  return status < 200 || status >= 400 ? "error" : "redirect";
+function statusTone(status: number): string {
+  if (status >= 300 && status < 400) return "redirect";
+  if (status < 200 || status >= 400) return "error";
+  return "ok";
 }
 
 type Props = {
@@ -386,7 +384,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
 
       {selectedIds.size > 0 && (
         <div className="selection-bar">
-          <span>{selectedIds.size} selected</span>
+          <span>{selectedIds.size} selected on this page</span>
           <button className="danger" onClick={() => setDeleteTargets([...selectedIds])}>
             Delete selected
           </button>
@@ -476,14 +474,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                         onClick={(e) => e.stopPropagation()}
                       />
                     </td>
-                    <td className="request-number" title={`HTTP ${r.status_code || "ERR"}`}>
-                      #{r.id}
-                      {isNonSuccess(r.status_code) && (
-                        <span className={`status-chip ${statusChipClass(r.status_code)}`}>
-                          {r.status_code || "ERR"}
-                        </span>
-                      )}
-                    </td>
+                    <td className="request-number">#{r.id}</td>
                     <td className="nowrap">{formatTimestamp(r.started_at)}</td>
                     <td>
                       {r.session_key ? (
@@ -511,8 +502,9 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                       {r.model && <div className="muted small">{r.model}</div>}
                     </td>
                     <td>{r.harness ? <span className="chip">{r.harness}</span> : <span className="muted">—</span>}</td>
-                    <td className="path-cell" title={[r.method, r.endpoint].filter(Boolean).join(" ")}>
+                    <td className="path-cell" title={[r.status_code || "ERR", r.method, r.provider, r.endpoint].filter(Boolean).join(" ")}>
                       <div className="path-line">
+                        <span className={`http-status ${statusTone(r.status_code)}`}>{r.status_code || "ERR"}</span>{" "}
                         <span className="path-method">{r.method}</span>{" "}
                         <span>{r.endpoint}</span>
                       </div>
