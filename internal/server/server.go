@@ -385,6 +385,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	tree := conversation.Build([]store.RequestForTree{{
 		ID:           detail.ID,
 		StartedAt:    detail.StartedAt,
+		StatusCode:   detail.StatusCode,
 		Parser:       detail.Parser,
 		RequestBody:  []byte(detail.RequestBody),
 		ResponseBody: []byte(detail.ResponseBody),

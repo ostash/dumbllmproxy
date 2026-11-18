@@ -163,8 +163,8 @@ func TestStoreCompressesBodiesAndReadsOldRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tree) != 1 || string(tree[0].RequestBody) != string(body) {
-		t.Fatalf("tree bodies not restored: %#v", tree)
+	if len(tree) != 1 || string(tree[0].RequestBody) != string(body) || tree[0].StatusCode != 200 {
+		t.Fatalf("tree bodies or status not restored: %#v", tree)
 	}
 
 	// A row written before compression existed must still read back unchanged.

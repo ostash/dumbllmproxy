@@ -50,14 +50,17 @@ type builder struct {
 // using the openai_chat parser participate; other parsers remain available in
 // the request inspector when the request was captured.
 //
-// Only completed exchanges contribute. A request that failed (for example a
-// 401 or 404) or whose response could not be parsed has no assistant message,
-// so adding its prompt would leave a dangling turn that never happened. Such
-// requests stay visible in the session's request list and timeline.
+// Only successful (2xx) completed exchanges contribute. Redirects, failed
+// requests (for example a 401 or 404), and unparseable responses stay visible
+// in the session's request list and timeline, but adding their prompts would
+// leave a dangling turn that never happened.
 func Build(requests []store.RequestForTree) Tree {
 	b := &builder{}
 	root := &Node{}
 	for _, req := range requests {
+		if req.StatusCode < 200 || req.StatusCode >= 300 {
+			continue
+		}
 		if req.Parser != "openai_chat" {
 			continue
 		}

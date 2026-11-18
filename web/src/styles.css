@@ -16,6 +16,8 @@
   --warn-bg: #fff7d6;
   --danger: #b42318;
   --danger-bg: #fef3f2;
+  --redirect: #1d4ed8;
+  --redirect-bg: #eef4ff;
   --ok: #087443;
   --ok-bg: #e9f8ef;
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -560,6 +562,14 @@ th.clickable:hover {
   background: #fde8e6;
 }
 
+.clickable-row.row-redirect {
+  background: var(--redirect-bg);
+}
+
+.clickable-row.row-redirect:hover {
+  background: #e3edff;
+}
+
 .clickable-row.row-incomplete {
   background: var(--warn-bg);
 }
@@ -576,6 +586,31 @@ th.clickable:hover {
 .row-error .request-number {
   color: var(--danger);
   font-weight: 600;
+}
+
+.row-redirect .request-number {
+  color: var(--redirect);
+  font-weight: 600;
+}
+
+.status-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  vertical-align: 1px;
+}
+
+.status-chip.error {
+  color: var(--danger);
+}
+
+.status-chip.redirect {
+  color: var(--redirect);
 }
 
 .selected-row {

@@ -17,6 +17,7 @@ func req(id int64, messages []map[string]any, response map[string]any) store.Req
 	})
 	return store.RequestForTree{
 		ID:           id,
+		StatusCode:   200,
 		Parser:       "openai_chat",
 		RequestBody:  body,
 		ResponseBody: resp,
@@ -125,17 +126,20 @@ func TestBuildTreeMergesEmptyAndNullAssistantContent(t *testing.T) {
 	}
 }
 
-func TestBuildTreeSkipsFailedRequests(t *testing.T) {
+func TestBuildTreeSkipsNonSuccessRequests(t *testing.T) {
 	system := map[string]any{"role": "system", "content": "sys"}
 	user1 := map[string]any{"role": "user", "content": "one"}
 	assistant1 := map[string]any{"role": "assistant", "content": "hi"}
 	user2 := map[string]any{"role": "user", "content": "two"}
 
-	failed := req(2, []map[string]any{system, user1, assistant1, user2}, nil)
-	failed.ResponseBody = []byte(`{"error":{"message":"Missing Authentication header","code":401}}`)
+	redirect := req(2, []map[string]any{system, user1, assistant1, user2}, map[string]any{"role": "assistant", "content": "redirect body"})
+	redirect.StatusCode = 302
+	failed := req(3, []map[string]any{system, user1, assistant1, user2}, map[string]any{"role": "assistant", "content": "error body"})
+	failed.StatusCode = 401
 
 	tree := Build([]store.RequestForTree{
 		req(1, []map[string]any{system, user1}, assistant1),
+		redirect,
 		failed,
 	})
 

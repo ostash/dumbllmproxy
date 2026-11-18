@@ -33,6 +33,21 @@ import { useDebouncedValue } from "./useDebouncedValue";
 const SORT_KEYS = ["started_at", "id", "status_code", "total_tokens", "cost_amount", "duration"] as const;
 type SortKey = (typeof SORT_KEYS)[number];
 
+function requestRowClass(r: RequestSummary): string {
+  if (r.status_code < 200 || r.status_code >= 400) return "clickable-row row-error";
+  if (r.status_code >= 300) return "clickable-row row-redirect";
+  if (r.incomplete) return "clickable-row row-incomplete";
+  return "clickable-row";
+}
+
+function isNonSuccess(status: number): boolean {
+  return status < 200 || status >= 300;
+}
+
+function statusChipClass(status: number): string {
+  return status < 200 || status >= 400 ? "error" : "redirect";
+}
+
 type Props = {
   initialParams: URLSearchParams;
   refreshKey: number;
@@ -435,7 +450,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                 {requests.map((r) => (
                   <tr
                     key={r.id}
-                    className={`clickable-row${r.status_code !== 200 ? " row-error" : r.incomplete ? " row-incomplete" : ""}`}
+                    className={requestRowClass(r)}
                     tabIndex={0}
                     role="link"
                     onClick={() => onOpenRequest(r.id)}
@@ -456,7 +471,14 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                         onClick={(e) => e.stopPropagation()}
                       />
                     </td>
-                    <td className="request-number" title={`HTTP ${r.status_code || "ERR"}`}>#{r.id}</td>
+                    <td className="request-number" title={`HTTP ${r.status_code || "ERR"}`}>
+                      #{r.id}
+                      {isNonSuccess(r.status_code) && (
+                        <span className={`status-chip ${statusChipClass(r.status_code)}`}>
+                          {r.status_code || "ERR"}
+                        </span>
+                      )}
+                    </td>
                     <td className="nowrap" title={formatTime(r.started_at)}>{formatTimestamp(r.started_at)}</td>
                     <td>
                       {r.session_key ? (

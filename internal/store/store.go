@@ -207,6 +207,7 @@ type ListOptions struct {
 type RequestForTree struct {
 	ID           int64
 	StartedAt    string
+	StatusCode   int
 	Parser       string
 	RequestBody  []byte
 	ResponseBody []byte
@@ -981,7 +982,7 @@ func (s *Store) queryRequestSummaries(ctx context.Context, query string, args ..
 }
 
 func (s *Store) ListRequestsForTree(ctx context.Context, sessionID int64) ([]RequestForTree, error) {
-	query := `SELECT id, started_at, parser, request_body, response_body FROM requests
+	query := `SELECT id, started_at, status_code, parser, request_body, response_body FROM requests
 		WHERE session_id = ? ORDER BY started_at ASC, id ASC`
 	rows, err := s.db.QueryContext(ctx, query, sessionID)
 	if err != nil {
@@ -992,7 +993,7 @@ func (s *Store) ListRequestsForTree(ctx context.Context, sessionID int64) ([]Req
 	for rows.Next() {
 		var r RequestForTree
 		var reqBody, respBody []byte
-		if err := rows.Scan(&r.ID, &r.StartedAt, &r.Parser, &reqBody, &respBody); err != nil {
+		if err := rows.Scan(&r.ID, &r.StartedAt, &r.StatusCode, &r.Parser, &reqBody, &respBody); err != nil {
 			return nil, err
 		}
 		r.RequestBody = decodeBody(reqBody)

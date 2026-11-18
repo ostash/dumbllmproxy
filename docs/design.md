@@ -51,9 +51,10 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
 
 ## Conversation tree
 
-- Build a tree from completed exchanges only. Shared message-history prefixes merge; diverging histories branch.
+- Build a tree from successful (2xx) completed exchanges only. Shared message-history prefixes merge; diverging
+  histories branch.
 - A node records the first request that introduced it and all requests where it appears.
-- Failed or unparseable requests stay in the session request list and timeline but do not add dangling turns.
+- Non-2xx or unparseable requests stay in the session request list and timeline but do not add dangling turns.
 - Message identity ignores provider-specific reasoning and annotation fields.
 
 ## Cost
