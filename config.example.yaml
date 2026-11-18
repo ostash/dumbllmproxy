@@ -4,6 +4,8 @@
 proxy:
   listen: 127.0.0.1:8080
   database: ./dumbllmproxy.db
+  # Oversized proxied request bodies are rejected with 413. Default: 64 MiB.
+  max_request_bytes: 67108864
 
 # Requests are routed by longest matching path prefix.
 # /openrouter/api/v1/chat/completions -> https://openrouter.ai/api/v1/chat/completions

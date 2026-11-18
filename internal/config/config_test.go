@@ -182,6 +182,18 @@ func TestMetadataHeaderMatchers(t *testing.T) {
 	}
 }
 
+func TestMaxRequestBytesDefaultAndValidation(t *testing.T) {
+	cfg := &Config{}
+	cfg.SetDefaults()
+	if cfg.Proxy.MaxRequestBytes != DefaultMaxRequestBytes {
+		t.Fatalf("max request bytes = %d, want %d", cfg.Proxy.MaxRequestBytes, DefaultMaxRequestBytes)
+	}
+	cfg.Proxy.MaxRequestBytes = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for negative max_request_bytes")
+	}
+}
+
 func TestValidateRejectsBadMetadataRegex(t *testing.T) {
 	cfg := &Config{
 		Proxy: ProxyConfig{Listen: "127.0.0.1:0", Database: "x.db"},

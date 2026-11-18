@@ -38,9 +38,14 @@ func (c *Config) MetadataHeaderMatchers() []HeaderMatcher {
 	return c.metadataMatchers
 }
 
+// DefaultMaxRequestBytes bounds proxied request bodies when the configuration
+// does not set a limit.
+const DefaultMaxRequestBytes int64 = 64 << 20
+
 type ProxyConfig struct {
-	Listen   string `yaml:"listen"`
-	Database string `yaml:"database"`
+	Listen          string `yaml:"listen"`
+	Database        string `yaml:"database"`
+	MaxRequestBytes int64  `yaml:"max_request_bytes"`
 }
 
 type UpstreamConfig struct {
@@ -123,6 +128,9 @@ func (c *Config) SetDefaults() {
 	if c.Proxy.Database == "" {
 		c.Proxy.Database = "dumbllmproxy.db"
 	}
+	if c.Proxy.MaxRequestBytes == 0 {
+		c.Proxy.MaxRequestBytes = DefaultMaxRequestBytes
+	}
 	for i := range c.Upstreams {
 		u := &c.Upstreams[i]
 		u.Prefix = normalizePrefix(u.Prefix)
@@ -187,6 +195,9 @@ func (c *Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Proxy.Database) == "" {
 		return fmt.Errorf("proxy.database must not be empty")
+	}
+	if c.Proxy.MaxRequestBytes < 0 {
+		return fmt.Errorf("proxy.max_request_bytes must not be negative")
 	}
 	seenPrefixes := map[string]bool{}
 	seenNames := map[string]bool{}

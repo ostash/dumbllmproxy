@@ -20,6 +20,7 @@ This document records the non-obvious invariants behind dumbllmproxy. It is not 
   directions; drop `Connection` and every header it names.
 - Do not inject or manage credentials. Forward client headers unchanged.
 - Buffer and re-frame the request body as needed; reject connection upgrades.
+- Bound proxied request bodies. Reject oversized requests with 413; do not forward or capture them.
 - Forward compressed bytes unchanged; store a separately decoded copy.
 - Do not follow redirects. Forward 3xx responses and their `Location` header unchanged.
 - Stream all responses as they arrive, regardless of content type. Do not buffer the whole response before forwarding.

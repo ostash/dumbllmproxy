@@ -193,6 +193,58 @@ func TestProxyNonStreamingAndOpenRouterCost(t *testing.T) {
 	}
 }
 
+func TestProxyRejectsOversizedRequest(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not receive an oversized request")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Proxy: config.ProxyConfig{
+			Listen:          "127.0.0.1:0",
+			Database:        filepath.Join(t.TempDir(), "oversized.db"),
+			MaxRequestBytes: 32,
+		},
+		Upstreams: []config.UpstreamConfig{{
+			Name: "test", Prefix: "/open", BaseURL: upstream.URL, Parser: "none", Pricing: "none",
+		}},
+	}
+	st, proxySrv := newTestProxyWithConfig(t, cfg)
+
+	for _, chunked := range []bool{false, true} {
+		name := "content length"
+		if chunked {
+			name = "chunked"
+		}
+		t.Run(name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPost, proxySrv.URL+"/open/v1/chat/completions", strings.NewReader(strings.Repeat("x", 64)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if chunked {
+				req.ContentLength = -1
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusRequestEntityTooLarge {
+				t.Fatalf("status = %d, want 413", resp.StatusCode)
+			}
+		})
+	}
+
+	requests, err := st.ListAllRequests(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 0 {
+		t.Fatalf("oversized requests were captured: %#v", requests)
+	}
+}
+
 func TestProxyDoesNotFollowRedirects(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/elsewhere", http.StatusFound)

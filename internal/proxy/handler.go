@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -62,9 +63,10 @@ type Handler struct {
 	client *http.Client
 	logger *log.Logger
 
-	captureQueue chan captureJob
-	captureDone  chan struct{}
-	captureLimit int
+	captureQueue    chan captureJob
+	captureDone     chan struct{}
+	captureLimit    int
+	maxRequestBytes int64
 }
 
 func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Handler {
@@ -76,6 +78,10 @@ func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Handler {
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}).DialContext
+	maxRequestBytes := cfg.Proxy.MaxRequestBytes
+	if maxRequestBytes <= 0 {
+		maxRequestBytes = config.DefaultMaxRequestBytes
+	}
 	h := &Handler{
 		cfg:   cfg,
 		store: st,
@@ -86,10 +92,11 @@ func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Handler {
 				return http.ErrUseLastResponse
 			},
 		},
-		logger:       logger,
-		captureQueue: make(chan captureJob, 256),
-		captureDone:  make(chan struct{}),
-		captureLimit: maxCapturedResponseBytes,
+		logger:          logger,
+		captureQueue:    make(chan captureJob, 256),
+		captureDone:     make(chan struct{}),
+		captureLimit:    maxCapturedResponseBytes,
+		maxRequestBytes: maxRequestBytes,
 	}
 	go h.captureWorker()
 	return h
@@ -241,8 +248,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	startedAt := time.Now().UTC()
+	if r.ContentLength > h.maxRequestBytes {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxRequestBytes)
 	rawRequestBody, err := io.ReadAll(r.Body)
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "failed to read request body", http.StatusBadRequest)
 		return
 	}
