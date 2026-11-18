@@ -319,9 +319,11 @@ select {
 
 .session-cell {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
+  max-width: 240px;
 }
 
 .secondary,
@@ -619,12 +621,30 @@ th.clickable:hover {
 
 .path-cell {
   max-width: 360px;
-  word-break: break-all;
+}
+
+.path-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-method {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .session-key {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
-  word-break: break-all;
+}
+
+.session-cell .link-button {
+  flex: 0 0 auto;
 }
 
 .chip {

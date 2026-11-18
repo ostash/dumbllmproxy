@@ -489,7 +489,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                     <td>
                       {r.session_key ? (
                         <div className="session-cell">
-                          <span className="session-key">{r.session_key}</span>
+                          <span className="session-key" title={r.session_key}>{r.session_key}</span>
                           {r.session_id !== undefined && (
                             <button
                               className="link-button"
@@ -512,9 +512,11 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                       {r.model && <div className="muted small">{r.model}</div>}
                     </td>
                     <td>{r.harness ? <span className="chip">{r.harness}</span> : <span className="muted">—</span>}</td>
-                    <td className="path-cell">
-                      <div>{r.method}</div>
-                      <div className="muted small">{[r.provider, r.endpoint].filter(Boolean).join(" ")}</div>
+                    <td className="path-cell" title={[r.method, r.endpoint].filter(Boolean).join(" ")}>
+                      <div className="path-line">
+                        <span className="path-method">{r.method}</span>{" "}
+                        <span>{r.endpoint}</span>
+                      </div>
                     </td>
                     <td className="nowrap">{formatDuration(r.started_at, r.completed_at)}</td>
                     <td className="numeric token-cell">
