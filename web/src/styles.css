@@ -1013,6 +1013,27 @@ th.clickable:hover {
   padding-left: 8px;
 }
 
+.tool-args {
+  display: grid;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.tool-arg {
+  display: grid;
+  gap: 2px;
+}
+
+.tool-arg-key {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.tool-arg pre {
+  margin-top: 0;
+}
+
 .tool-call-head {
   display: flex;
   align-items: baseline;

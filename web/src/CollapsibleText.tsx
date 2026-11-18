@@ -5,16 +5,31 @@ import { useState } from "react";
 
 type Props = {
   text: string;
-  limit: number;
+  maxLines: number;
+  maxChars: number;
   className?: string;
 };
 
-// CollapsibleText shows a compact preview of long conversation material and
-// lets the reader expand it in place. Nothing is silently dropped.
-export function CollapsibleText({ text, limit, className }: Props) {
+// CollapsibleText shows a line-based preview of long conversation material and
+// lets the reader expand it in place. maxChars is a safety cap for a single
+// pathologically long line; nothing is silently dropped.
+export function CollapsibleText({ text, maxLines, maxChars, className }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const truncated = text.length > limit;
-  const shown = expanded || !truncated ? text : text.slice(0, limit) + "…";
+  const lines = text.split("\n");
+  const lineTruncated = lines.length > maxLines;
+  const charTruncated = text.length > maxChars;
+  const truncated = lineTruncated || charTruncated;
+  let preview = text;
+  if (truncated) {
+    preview = lines.slice(0, maxLines).join("\n");
+    if (preview.length > maxChars) {
+      preview = preview.slice(0, maxChars);
+    }
+  }
+  const shown = expanded || !truncated ? text : `${preview}\n…`;
+  const countLabel = lineTruncated
+    ? `${lines.length.toLocaleString()} lines`
+    : `${text.length.toLocaleString()} chars`;
   return (
     <>
       <pre className={className}>{shown}</pre>
@@ -26,7 +41,7 @@ export function CollapsibleText({ text, limit, className }: Props) {
             setExpanded((v) => !v);
           }}
         >
-          {expanded ? "show less" : `show full (${text.length.toLocaleString()} chars)`}
+          {expanded ? "show less" : `show full (${countLabel})`}
         </button>
       )}
     </>

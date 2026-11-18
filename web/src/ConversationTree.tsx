@@ -140,7 +140,7 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
             {node.tool_call_id && <div className="muted small">tool_call_id: {node.tool_call_id}</div>}
 
             {node.content ? (
-              <CollapsibleText text={node.content} limit={1200} className="message-content" />
+              <CollapsibleText text={node.content} maxLines={20} maxChars={4000} className="message-content" />
             ) : (
               <div className="muted small">(no text content)</div>
             )}
@@ -148,7 +148,7 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
             {node.reasoning && (
               <details className="reasoning" onClick={(e) => e.stopPropagation()}>
                 <summary>Reasoning</summary>
-                <CollapsibleText text={node.reasoning} limit={4000} />
+                <CollapsibleText text={node.reasoning} maxLines={40} maxChars={8000} />
               </details>
             )}
 
@@ -162,7 +162,7 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
                         <span className="tool-call-index">#{idx + 1}</span>
                         <span className="tool-call-name">{call.name || "(unnamed tool)"}</span>
                       </div>
-                      {call.arguments && <CollapsibleText text={call.arguments} limit={1200} />}
+                      {call.arguments !== undefined && <ToolArguments value={call.arguments} />}
                       {results.length > 0 && <ToolResults results={results} />}
                     </div>
                   );
@@ -197,7 +197,7 @@ function ToolResults({ results }: { results: ConversationNode[] }) {
         <details className="tool-result" key={result.id} onClick={(e) => e.stopPropagation()}>
           <summary>Result</summary>
           {result.content ? (
-            <CollapsibleText text={result.content} limit={4000} />
+            <CollapsibleText text={result.content} maxLines={40} maxChars={8000} />
           ) : (
             <div className="muted small">(empty result)</div>
           )}
@@ -207,7 +207,51 @@ function ToolResults({ results }: { results: ConversationNode[] }) {
   );
 }
 
-type ToolCallView = { id?: string; name?: string; arguments?: string };
+type ToolCallView = { id?: string; name?: string; arguments?: unknown };
+
+function parseToolArguments(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function formatToolArguments(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  const parsed = parseToolArguments(value);
+  if (typeof parsed === "string") return parsed;
+  return prettyJSON(parsed);
+}
+
+function ToolArguments({ value }: { value: unknown }) {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = parseToolArguments(value);
+  if (typeof parsed === "string") {
+    return parsed ? <CollapsibleText text={parsed} maxLines={20} maxChars={4000} /> : null;
+  }
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    if (entries.some(([, field]) => typeof field === "string" && field.includes("\n"))) {
+      return (
+        <div className="tool-args">
+          {entries.map(([key, field]) => (
+            <div className="tool-arg" key={key}>
+              <span className="tool-arg-key">{key}</span>
+              {typeof field === "string" ? (
+                <CollapsibleText text={field} maxLines={20} maxChars={4000} />
+              ) : (
+                <pre>{JSON.stringify(field) ?? String(field)}</pre>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+  }
+  return <CollapsibleText text={formatToolArguments(value) ?? ""} maxLines={20} maxChars={4000} />;
+}
 
 function parseToolCalls(value: unknown): ToolCallView[] {
   if (!value) return [];
@@ -219,15 +263,10 @@ function parseToolCalls(value: unknown): ToolCallView[] {
       return {
         id: typeof obj.id === "string" ? obj.id : undefined,
         name: typeof fn.name === "string" ? fn.name : undefined,
-        arguments:
-          typeof fn.arguments === "string"
-            ? fn.arguments
-            : fn.arguments !== undefined
-              ? prettyJSON(fn.arguments)
-              : undefined
+        arguments: fn.arguments
       };
     }
-    return { arguments: prettyJSON(item) };
+    return { arguments: item };
   });
 }
 
