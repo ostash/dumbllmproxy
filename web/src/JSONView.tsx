@@ -8,8 +8,15 @@ type Props = {
   value?: string;
 };
 
+type ExpandMode = "default" | "expanded" | "collapsed";
+
 export function JSONView({ value }: Props) {
-  const [expandAll, setExpandAll] = useState(false);
+  const [expandMode, setExpandMode] = useState<ExpandMode>("default");
+  const [revision, setRevision] = useState(0);
+  function changeMode(mode: ExpandMode) {
+    setExpandMode(mode);
+    setRevision((v) => v + 1);
+  }
 
   if (!value) {
     return (
@@ -35,25 +42,42 @@ export function JSONView({ value }: Props) {
     <div className="payload-frame">
       <div className="payload-toolbar">
         <CopyButton text={copyText} />
-        <button className="link-button" onClick={() => setExpandAll((v) => !v)}>
-          {expandAll ? "Collapse all" : "Expand all"}
-        </button>
+        <div className="segmented" role="group" aria-label="JSON expansion">
+          <button
+            className={expandMode === "default" ? "active" : ""}
+            onClick={() => changeMode("default")}
+          >
+            Default
+          </button>
+          <button
+            className={expandMode === "expanded" ? "active" : ""}
+            onClick={() => changeMode("expanded")}
+          >
+            Expand all
+          </button>
+          <button
+            className={expandMode === "collapsed" ? "active" : ""}
+            onClick={() => changeMode("collapsed")}
+          >
+            Collapse all
+          </button>
+        </div>
       </div>
-      <div className="json-view">
-        <JSONNode value={parsed} depth={0} expandAll={expandAll} />
+      <div className="json-view" key={revision}>
+        <JSONNode value={parsed} depth={0} mode={expandMode} />
       </div>
     </div>
   );
 }
 
-function JSONNode({ value, depth, expandAll }: { value: unknown; depth: number; expandAll: boolean }) {
+function JSONNode({ value, depth, mode }: { value: unknown; depth: number; mode: ExpandMode }) {
   if (Array.isArray(value)) {
     return (
       <JSONCollection
         kind="array"
         entries={value.map((item, index) => [String(index), item])}
         depth={depth}
-        expandAll={expandAll}
+        mode={mode}
       />
     );
   }
@@ -63,7 +87,7 @@ function JSONNode({ value, depth, expandAll }: { value: unknown; depth: number; 
         kind="object"
         entries={Object.entries(value as Record<string, unknown>)}
         depth={depth}
-        expandAll={expandAll}
+        mode={mode}
       />
     );
   }
@@ -75,12 +99,12 @@ function JSONCollection({
   kind,
   entries,
   depth,
-  expandAll
+  mode
 }: {
   kind: "array" | "object";
   entries: [string, unknown][];
   depth: number;
-  expandAll: boolean;
+  mode: ExpandMode;
 }) {
   const open = kind === "array" ? "[" : "{";
   const close = kind === "array" ? "]" : "}";
@@ -88,7 +112,7 @@ function JSONCollection({
     return <span className="json-punct">{open}{close}</span>;
   }
   return (
-    <details className="json-node" open={expandAll || depth < 3}>
+    <details className="json-node" open={mode === "expanded" || (mode === "default" && depth < 3)}>
       <summary>
         <span className="json-punct">{open}</span>
         <span className="json-summary">…</span>
@@ -106,7 +130,7 @@ function JSONCollection({
                 <span className="json-punct">: </span>
               </>
             )}
-            <JSONNode value={item} depth={depth + 1} expandAll={expandAll} />
+            <JSONNode value={item} depth={depth + 1} mode={mode} />
             {index < entries.length - 1 && <span className="json-punct">,</span>}
           </div>
         ))}
