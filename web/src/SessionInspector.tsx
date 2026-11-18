@@ -17,10 +17,11 @@ type Props = {
   refreshKey: number;
   onBack: () => void;
   onOpenRequest: (id: number) => void;
+  onRequestIds?: (ids: number[]) => void;
   initialNodeId?: string;
 };
 
-export function SessionInspector({ sessionId, refreshKey, onBack, onOpenRequest, initialNodeId }: Props) {
+export function SessionInspector({ sessionId, refreshKey, onBack, onOpenRequest, onRequestIds, initialNodeId }: Props) {
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -47,6 +48,7 @@ export function SessionInspector({ sessionId, refreshKey, onBack, onOpenRequest,
       .then((d) => {
         if (!cancelled) {
           setDetail(d);
+          onRequestIds?.(d.requests.map((request) => request.id));
           if (!initialNodeApplied.current && initialNodeId) {
             initialNodeApplied.current = true;
             const node = findNode(d.conversation.roots, initialNodeId);

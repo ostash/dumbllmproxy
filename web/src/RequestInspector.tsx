@@ -14,6 +14,7 @@ type Props = {
   requestId: number;
   refreshKey: number;
   onBack: () => void;
+  backLabel?: string;
   onOpenSession: (id: number) => void;
   prevRequestId?: number;
   nextRequestId?: number;
@@ -26,6 +27,7 @@ export function RequestInspector({
   requestId,
   refreshKey,
   onBack,
+  backLabel = "Requests",
   onOpenSession,
   prevRequestId,
   nextRequestId,
@@ -113,7 +115,7 @@ export function RequestInspector({
     <main className="page inspector-page">
       {error && <div className="error-box">{error}</div>}
       <div className="inspector-head">
-        <button className="back-button" onClick={onBack}>← Requests</button>
+        <button className="back-button" onClick={onBack}>← {backLabel}</button>
         <div className="inspector-nav">
           <button
             className="secondary"
