@@ -7,7 +7,6 @@ import type { Facets, RequestSummary } from "./types";
 import {
   formatCost,
   formatDuration,
-  formatTime,
   formatTimestamp,
   formatTokens
 } from "./format";
@@ -485,7 +484,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
                         </span>
                       )}
                     </td>
-                    <td className="nowrap" title={formatTime(r.started_at)}>{formatTimestamp(r.started_at)}</td>
+                    <td className="nowrap">{formatTimestamp(r.started_at)}</td>
                     <td>
                       {r.session_key ? (
                         <div className="session-cell">

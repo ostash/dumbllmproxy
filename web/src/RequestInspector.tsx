@@ -7,7 +7,7 @@ import type { RequestDetail } from "./types";
 import { ConversationTree } from "./ConversationTree";
 import { PayloadView } from "./PayloadView";
 import { JSONView } from "./JSONView";
-import { formatCost, formatDuration, formatTime, formatTokens, statusClass } from "./format";
+import { formatCost, formatDuration, formatTimestamp, formatTokens, statusClass } from "./format";
 import { TokenBreakdown } from "./TokenBreakdown";
 
 type Props = {
@@ -138,7 +138,7 @@ export function RequestInspector({
           </h1>
           <p className="muted">
             <span className={statusClass(detail.status_code)}>{detail.status_code || "ERR"}</span>{" "}
-            {detail.method} {[detail.provider, detail.endpoint].filter(Boolean).join(" ")} · {formatTime(detail.started_at)}
+            {detail.method} {[detail.provider, detail.endpoint].filter(Boolean).join(" ")} · {formatTimestamp(detail.started_at)}
             {detail.model && <> · {detail.model}</>}
             {detail.harness && <span className="chip">{detail.harness}</span>}
             {detail.streamed && <span className="chip">streamed</span>}
@@ -256,8 +256,8 @@ export function RequestInspector({
                 <dt>Model</dt><dd>{detail.model || "—"}</dd>
                 <dt>Harness</dt><dd>{detail.harness || "—"}</dd>
                 <dt>Session</dt><dd>{detail.session_key || "unassigned"}</dd>
-                <dt>Started</dt><dd>{formatTime(detail.started_at)}</dd>
-                <dt>Completed</dt><dd>{formatTime(detail.completed_at)}</dd>
+                <dt>Started</dt><dd>{formatTimestamp(detail.started_at)}</dd>
+                <dt>Completed</dt><dd>{formatTimestamp(detail.completed_at)}</dd>
                 <dt>Duration</dt><dd>{formatDuration(detail.started_at, detail.completed_at)}</dd>
                 <dt>Parser</dt><dd>{detail.parser || "—"}</dd>
                 <dt>Request content type</dt><dd>{detail.request_content_type || "—"}</dd>

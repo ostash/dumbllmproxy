@@ -1,13 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Viktor Ostashevskyi <ostash@ostash.kiev.ua>
 // SPDX-License-Identifier: GPL-3.0-only
 
-export function formatTime(value?: string): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-}
-
 // formatTimestamp renders local time as YYYY-MM-DD HH:MM:SS.mmm.
 export function formatTimestamp(value?: string): string {
   if (!value) return "—";

@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import type { Facets, SessionSummary } from "./types";
-import { formatCost, formatRelativeTime, formatTime, formatTokens } from "./format";
+import { formatCost, formatRelativeTime, formatTimestamp, formatTokens } from "./format";
 import { TokenBreakdown } from "./TokenBreakdown";
 import { PartialChip, hasNoData } from "./Completeness";
 import { Pagination } from "./Pagination";
@@ -306,8 +306,8 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
                       {s.failed_requests > 0 && <span className="chip warn">{s.failed_requests} failed</span>}
                       {s.incomplete_requests > 0 && <span className="chip warn">{s.incomplete_requests} incomplete</span>}
                     </td>
-                    <td className="nowrap" title={formatTime(s.first_seen)}>{formatRelativeTime(s.first_seen)}</td>
-                    <td className="nowrap" title={formatTime(s.last_activity)}>{formatRelativeTime(s.last_activity)}</td>
+                    <td className="nowrap" title={formatTimestamp(s.first_seen)}>{formatRelativeTime(s.first_seen)}</td>
+                    <td className="nowrap" title={formatTimestamp(s.last_activity)}>{formatRelativeTime(s.last_activity)}</td>
                     <td className="numeric">{s.request_count}</td>
                     <td>
                       {s.providers?.length ? <div>{s.providers.join(", ")}</div> : null}

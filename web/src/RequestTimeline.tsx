@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import type { RequestSummary } from "./types";
-import { formatCost, formatDuration, formatRelativeTime, formatTime, formatTokens, statusClass } from "./format";
+import { formatCost, formatDuration, formatRelativeTime, formatTimestamp, formatTokens, statusClass } from "./format";
 import { TokenBreakdown } from "./TokenBreakdown";
 
 type Props = {
@@ -29,7 +29,7 @@ export function RequestTimeline({ requests, selectedRequestIds, onSelect }: Prop
             <div className="timeline-top">
               <span className={statusClass(req.status_code)}>{req.status_code || "ERR"}</span>
               <span className="timeline-id">HTTP #{req.id}</span>
-              <span className="timeline-time" title={formatTime(req.started_at)}>{formatRelativeTime(req.started_at)}</span>
+              <span className="timeline-time" title={formatTimestamp(req.started_at)}>{formatRelativeTime(req.started_at)}</span>
             </div>
             <div className="timeline-meta">
               <span>{req.provider || "unknown provider"}</span>

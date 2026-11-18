@@ -7,7 +7,7 @@ import type { ConversationNode, RequestSummary, SessionDetail } from "./types";
 import { ConversationTree } from "./ConversationTree";
 import { RequestTimeline } from "./RequestTimeline";
 import { RequestDrawer } from "./RequestDrawer";
-import { formatCost, formatTime, formatTokens } from "./format";
+import { formatCost, formatTimestamp, formatTokens } from "./format";
 import { TokenBreakdown } from "./TokenBreakdown";
 import { PartialChip, hasNoData } from "./Completeness";
 import { CopyButton } from "./CopyButton";
@@ -130,7 +130,7 @@ export function SessionInspector({ sessionId, refreshKey, onBack, onOpenRequest,
             <CopyButton text={summary.session_key} className="title-copy" />
           </h1>
           <p className="muted">
-            {summary.request_count} HTTP exchange{summary.request_count === 1 ? "" : "s"} · started {formatTime(summary.first_seen)} · last {formatTime(summary.last_activity)}
+            {summary.request_count} HTTP exchange{summary.request_count === 1 ? "" : "s"} · started {formatTimestamp(summary.first_seen)} · last {formatTimestamp(summary.last_activity)}
           </p>
         </div>
         <div className="summary-stats">
