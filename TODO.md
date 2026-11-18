@@ -29,6 +29,11 @@ beyond list views; the items below are instances of the same direction.
   storing the full history per request; the storage deduplication item is the fix, not the tree builder.
 - Replace the linear child scan in `conversation.findOrCreate` (`internal/conversation/tree.go`) with a hash-keyed map.
   Secondary: it only matters when a node has many children.
+- Conversation detail rendering is now the main client bottleneck. Closed reasoning/tool-result details are lazily
+  mounted and tree nodes use `content-visibility`; for request 1044, load dropped from roughly 1.8s to 0.5s in headless
+  Chromium. Remaining: render Markdown only near the viewport, memoize `MessageText`/`NodeRow` to avoid re-parsing on
+  selection, and consider a recent-window progressive render for very long linear conversations.
+- Trim or code-split `rehype-highlight` grammars to reduce initial bundle evaluation cost.
 
 ## API and UI
 

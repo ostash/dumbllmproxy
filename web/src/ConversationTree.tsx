@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Viktor Ostashevskyi <ostash@ostash.kiev.ua>
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { ConversationNode } from "./types";
 import { prettyJSON } from "./format";
 import { CollapsibleText } from "./CollapsibleText";
@@ -154,10 +154,9 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
             )}
 
             {node.reasoning && (
-              <details className="reasoning" onClick={(e) => e.stopPropagation()}>
-                <summary>Reasoning</summary>
+              <LazyDetails className="reasoning" summary="Reasoning">
                 <MessageText text={node.reasoning} maxLines={40} maxChars={8000} defaultFormatted />
-              </details>
+              </LazyDetails>
             )}
 
             {toolCalls.length > 0 && (
@@ -198,18 +197,41 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
   );
 }
 
+type LazyDetailsProps = {
+  className?: string;
+  summary: ReactNode;
+  children: ReactNode;
+};
+
+// LazyDetails keeps closed content out of the React tree. Conversation pages
+// can contain hundreds of reasoning/tool-result blocks, and rendering hidden
+// Markdown is expensive.
+function LazyDetails({ className, summary, children }: LazyDetailsProps) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      className={className}
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <summary>{summary}</summary>
+      {open && children}
+    </details>
+  );
+}
+
 function ToolResults({ results }: { results: ConversationNode[] }) {
   return (
     <div className="tool-result-group">
       {results.map((result) => (
-        <details className="tool-result" key={result.id} onClick={(e) => e.stopPropagation()}>
-          <summary>Result</summary>
+        <LazyDetails className="tool-result" key={result.id} summary="Result">
           {result.content ? (
             <CollapsibleText text={result.content} maxLines={40} maxChars={8000} />
           ) : (
             <div className="muted small">(empty result)</div>
           )}
-        </details>
+        </LazyDetails>
       ))}
     </div>
   );

@@ -836,6 +836,8 @@ th.clickable:hover {
 }
 
 .tree-node {
+  content-visibility: auto;
+  contain-intrinsic-size: 80px;
   border: 1px solid transparent;
   border-radius: 9px;
   padding: 8px 9px;
