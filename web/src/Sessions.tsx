@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Viktor Ostashevskyi <ostash@ostash.kiev.ua>
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "./api";
 import type { Facets, SessionSummary } from "./types";
 import { formatCost, formatRelativeTime, formatTime, formatTokens } from "./format";
@@ -52,10 +52,13 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
   const [incomplete, setIncomplete] = useState(() => boolParam(initialParams, "has_incomplete"));
   const [provider, setProvider] = useState(() => stringParam(initialParams, "provider"));
   const [model, setModel] = useState(() => stringParam(initialParams, "model"));
-  const since = useMemo(() => sinceForWindow(timeWindow), [timeWindow]);
   const debouncedFilter = useDebouncedValue(filter);
   const debouncedProvider = useDebouncedValue(provider);
   const debouncedModel = useDebouncedValue(model);
+  const filtersPending =
+    filter !== debouncedFilter ||
+    provider !== debouncedProvider ||
+    model !== debouncedModel;
 
   useEffect(() => {
     let cancelled = false;
@@ -73,9 +76,11 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
   }, [refreshKey]);
 
   useEffect(() => {
+    if (filtersPending) return;
     let cancelled = false;
     setLoading(true);
     setError("");
+    const since = sinceForWindow(timeWindow);
     api
       .sessions({
         limit: pageSize,
@@ -106,7 +111,7 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
       cancelled = true;
     };
   }, [
-    refreshKey, reloadKey, page, pageSize, since, sortKey, sortDir,
+    filtersPending, refreshKey, reloadKey, page, pageSize, timeWindow, sortKey, sortDir,
     debouncedFilter, failed, incomplete, debouncedProvider, debouncedModel
   ]);
 
@@ -191,7 +196,7 @@ export function Sessions({ initialParams, refreshKey, onSelect, onListHash }: Pr
           <input
             className="filter"
             aria-label="Search sessions"
-            placeholder="Search all sessions…"
+            placeholder="Search session, provider, model…"
             value={filter}
             onChange={(e) => {
               setFilter(e.target.value);

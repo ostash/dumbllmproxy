@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Viktor Ostashevskyi <ostash@ostash.kiev.ua>
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "./api";
 import type { Facets, RequestSummary } from "./types";
 import {
@@ -81,11 +81,15 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
   const [deleteTargets, setDeleteTargets] = useState<number[] | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  const since = useMemo(() => sinceForWindow(timeWindow), [timeWindow]);
   const debouncedFilter = useDebouncedValue(filter);
   const debouncedProvider = useDebouncedValue(provider);
   const debouncedModel = useDebouncedValue(model);
   const debouncedHarness = useDebouncedValue(harness);
+  const filtersPending =
+    filter !== debouncedFilter ||
+    provider !== debouncedProvider ||
+    model !== debouncedModel ||
+    harness !== debouncedHarness;
 
   useEffect(() => {
     let cancelled = false;
@@ -103,9 +107,11 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
   }, [refreshKey]);
 
   useEffect(() => {
+    if (filtersPending) return;
     let cancelled = false;
     setLoading(true);
     setError("");
+    const since = sinceForWindow(timeWindow);
     api
       .requests({
         limit: pageSize,
@@ -140,7 +146,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
       cancelled = true;
     };
   }, [
-    refreshKey, reloadKey, page, pageSize, since, sortKey, sortDir,
+    filtersPending, refreshKey, reloadKey, page, pageSize, timeWindow, sortKey, sortDir,
     debouncedFilter, failed, incomplete, toolCalls, unassigned,
     debouncedProvider, debouncedModel, debouncedHarness
   ]);
@@ -150,7 +156,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
     setDeleteTargets(null);
     setDeleteError("");
   }, [
-    page, pageSize, since, sortKey, sortDir, debouncedFilter, failed,
+    page, pageSize, timeWindow, sortKey, sortDir, debouncedFilter, failed,
     incomplete, toolCalls, unassigned, debouncedProvider, debouncedModel,
     debouncedHarness
   ]);
@@ -314,7 +320,7 @@ export function Requests({ initialParams, refreshKey, onOpenRequest, onOpenSessi
           <input
             className="filter"
             aria-label="Search requests"
-            placeholder="Search all requests…"
+            placeholder="Search ID, model, endpoint, session…"
             value={filter}
             onChange={(e) => {
               setFilter(e.target.value);
