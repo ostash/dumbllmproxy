@@ -19,6 +19,17 @@ export const TIME_WINDOW_OPTIONS: { value: TimeWindow; label: string }[] = [
 export const PAGE_SIZES = [50, 100, 200] as const;
 export type PageSize = (typeof PAGE_SIZES)[number];
 
+// subtractMonths subtracts calendar months while clamping the day to the
+// target month. Plain Date.setMonth rolls March 31 into March 3 when it lands
+// on February, which makes "last 1 month" shorter than intended.
+function subtractMonths(date: Date, months: number): void {
+  const day = date.getDate();
+  date.setDate(1);
+  date.setMonth(date.getMonth() - months);
+  const daysInTargetMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(day, daysInTargetMonth));
+}
+
 export function sinceForWindow(value: TimeWindow): string | undefined {
   if (value === "all") return undefined;
   const date = new Date();
@@ -45,10 +56,10 @@ export function sinceForWindow(value: TimeWindow): string | undefined {
       date.setDate(date.getDate() - 7);
       break;
     case "1mo":
-      date.setMonth(date.getMonth() - 1);
+      subtractMonths(date, 1);
       break;
     case "1y":
-      date.setFullYear(date.getFullYear() - 1);
+      subtractMonths(date, 12);
       break;
   }
   return date.toISOString();
