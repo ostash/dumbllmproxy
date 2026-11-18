@@ -963,6 +963,196 @@ th.clickable:hover {
   overflow-wrap: anywhere;
 }
 
+.message-text {
+  min-width: 0;
+}
+
+.message-text-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 1px 0 3px;
+}
+
+.message-text-toolbar .link-button {
+  font-size: 11px;
+}
+
+.markdown {
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown p {
+  margin: 0 0 7px;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: 12px 0 6px;
+  line-height: 1.25;
+}
+
+.markdown h1 {
+  font-size: 18px;
+}
+
+.markdown h2 {
+  font-size: 16px;
+}
+
+.markdown h3 {
+  font-size: 14px;
+}
+
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-size: 13px;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0 0 7px;
+  padding-left: 20px;
+}
+
+.markdown li {
+  margin: 2px 0;
+}
+
+.markdown code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #f3f4f6;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.markdown pre {
+  margin: 6px 0;
+  padding: 8px;
+  border-radius: 7px;
+  background: #f3f4f6;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.markdown pre code {
+  padding: 0;
+  background: transparent;
+  font-size: 12px;
+}
+
+.markdown .hljs-comment,
+.markdown .hljs-quote {
+  color: #6e7781;
+  font-style: italic;
+}
+
+.markdown .hljs-keyword,
+.markdown .hljs-selector-tag,
+.markdown .hljs-literal,
+.markdown .hljs-section,
+.markdown .hljs-link {
+  color: #cf222e;
+}
+
+.markdown .hljs-string,
+.markdown .hljs-attr,
+.markdown .hljs-template-tag,
+.markdown .hljs-template-variable {
+  color: #0a3069;
+}
+
+.markdown .hljs-number,
+.markdown .hljs-symbol,
+.markdown .hljs-bullet {
+  color: #0550ae;
+}
+
+.markdown .hljs-title,
+.markdown .hljs-name,
+.markdown .hljs-type,
+.markdown .hljs-built_in {
+  color: #8250df;
+}
+
+.markdown .hljs-meta,
+.markdown .hljs-selector-id,
+.markdown .hljs-selector-class,
+.markdown .hljs-variable,
+.markdown .hljs-params {
+  color: #953800;
+}
+
+.markdown .hljs-addition {
+  color: #116329;
+  background: #dafbe1;
+}
+
+.markdown .hljs-deletion {
+  color: #82071e;
+  background: #ffebe9;
+}
+
+.markdown blockquote {
+  margin: 6px 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--muted);
+}
+
+.markdown table {
+  margin: 6px 0;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.markdown th,
+.markdown td {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.markdown th {
+  background: var(--panel-2);
+}
+
+.markdown a {
+  color: var(--accent);
+}
+
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+}
+
+.markdown-collapsed {
+  max-height: 24em;
+  overflow: hidden;
+}
+
+.markdown-image {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .reasoning {
   margin-top: 6px;
   color: var(--muted);

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { ConversationNode } from "./types";
 import { prettyJSON } from "./format";
 import { CollapsibleText } from "./CollapsibleText";
+import { MessageText } from "./MessageText";
 
 type Props = {
   roots: ConversationNode[];
@@ -79,6 +80,7 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
         role="button"
         onClick={() => onSelect(node)}
         onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             onSelect(node);
@@ -140,7 +142,13 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
             {node.tool_call_id && <div className="muted small">tool_call_id: {node.tool_call_id}</div>}
 
             {node.content ? (
-              <CollapsibleText text={node.content} maxLines={20} maxChars={4000} className="message-content" />
+              <MessageText
+                text={node.content}
+                maxLines={20}
+                maxChars={4000}
+                className="message-content"
+                defaultFormatted={node.role === "assistant"}
+              />
             ) : (
               <div className="muted small">(no text content)</div>
             )}
@@ -148,7 +156,7 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
             {node.reasoning && (
               <details className="reasoning" onClick={(e) => e.stopPropagation()}>
                 <summary>Reasoning</summary>
-                <CollapsibleText text={node.reasoning} maxLines={40} maxChars={8000} />
+                <MessageText text={node.reasoning} maxLines={40} maxChars={8000} defaultFormatted />
               </details>
             )}
 
