@@ -194,9 +194,7 @@ export function RequestInspector({
       )}
 
       <div className="inspector-note">
-        {paneMode === "conversation"
-          ? "Conversation reconstructed from this request body and final response. Streaming responses use the reconstructed final JSON."
-          : "Payload from this request and final response. Chat completions are pretty-printed; other formats are shown raw."}
+        {inspectorNote(paneMode, detail)}
       </div>
 
       <div className="inspector-grid">
@@ -233,6 +231,7 @@ export function RequestInspector({
                 requestBody={detail.request_body}
                 responseBody={detail.response_body}
                 streamed={detail.streamed}
+                parser={detail.parser}
                 rawResponseBody={detail.raw_response_body}
               />
             </div>
@@ -343,6 +342,22 @@ export function RequestInspector({
       </div>
     </main>
   );
+}
+
+function inspectorNote(paneMode: PaneMode, detail: RequestDetail): string {
+  if (paneMode === "conversation") {
+    const base = "Conversation reconstructed from this request body and final response.";
+    return detail.streamed && detail.parser === "openai_chat"
+      ? `${base} Streaming responses use the reconstructed final JSON.`
+      : base;
+  }
+  if (!detail.streamed) {
+    return "Payload from this request and response. Chat completions are pretty-printed; other formats are shown raw.";
+  }
+  if (detail.parser === "openai_chat") {
+    return "Payload from this request and reconstructed final response. Chat completions are pretty-printed; other formats are shown raw.";
+  }
+  return "Payload from this request and raw decoded streamed response. The configured parser does not reconstruct streams.";
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

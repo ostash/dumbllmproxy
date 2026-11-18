@@ -8,10 +8,11 @@ type Props = {
   requestBody?: string;
   responseBody?: string;
   streamed: boolean;
+  parser: string;
   rawResponseBody?: string;
 };
 
-export function PayloadView({ requestBody, responseBody, streamed, rawResponseBody }: Props) {
+export function PayloadView({ requestBody, responseBody, streamed, parser, rawResponseBody }: Props) {
   return (
     <>
       <section>
@@ -19,7 +20,7 @@ export function PayloadView({ requestBody, responseBody, streamed, rawResponseBo
         <PayloadBody value={requestBody} pretty={isChatRequest(requestBody)} />
       </section>
       <section>
-        <h3>{streamed ? "Reconstructed final response" : "Response body"}</h3>
+        <h3>{responseLabel(streamed, parser)}</h3>
         <PayloadBody value={responseBody} pretty={isChatResponse(responseBody)} />
       </section>
       {rawResponseBody && (
@@ -46,6 +47,12 @@ function RawPayload({ value }: { value?: string }) {
       <pre className="payload">{value || "—"}</pre>
     </div>
   );
+}
+
+function responseLabel(streamed: boolean, parser: string): string {
+  if (!streamed) return "Response body";
+  if (parser === "openai_chat") return "Reconstructed final response";
+  return "Raw streamed response";
 }
 
 function isChatRequest(value?: string): boolean {

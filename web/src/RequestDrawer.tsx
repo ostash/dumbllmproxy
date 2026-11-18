@@ -184,6 +184,7 @@ export function RequestDrawer({ requestId, onClose, onOpenRequest, onDeleted }: 
                   requestBody={detail.request_body}
                   responseBody={detail.response_body}
                   streamed={detail.streamed}
+                  parser={detail.parser}
                   rawResponseBody={detail.raw_response_body}
                 />
               )}
