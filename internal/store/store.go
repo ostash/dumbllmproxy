@@ -686,10 +686,10 @@ func matchesSessionFilters(sess SessionSummary, opts ListOptions) bool {
 	if opts.HasIncomplete != nil && (sess.IncompleteRequests > 0) != *opts.HasIncomplete {
 		return false
 	}
-	if opts.Provider != "" && !containsFold(sess.Providers, opts.Provider) {
+	if opts.Provider != "" && !anyContainsFoldSubstring(sess.Providers, opts.Provider) {
 		return false
 	}
-	if opts.Model != "" && !containsFold(sess.Models, opts.Model) {
+	if opts.Model != "" && !anyContainsFoldSubstring(sess.Models, opts.Model) {
 		return false
 	}
 	if needle := strings.ToLower(strings.TrimSpace(opts.Query)); needle != "" {
@@ -717,13 +717,13 @@ func matchesRequestFilters(req RequestSummary, opts ListOptions) bool {
 	if opts.Unassigned != nil && (req.SessionID == nil) != *opts.Unassigned {
 		return false
 	}
-	if opts.Provider != "" && !strings.EqualFold(req.Provider, opts.Provider) {
+	if opts.Provider != "" && !containsFoldSubstring(req.Provider, opts.Provider) {
 		return false
 	}
-	if opts.Model != "" && !strings.EqualFold(req.Model, opts.Model) {
+	if opts.Model != "" && !containsFoldSubstring(req.Model, opts.Model) {
 		return false
 	}
-	if opts.Harness != "" && !strings.EqualFold(req.Harness, opts.Harness) {
+	if opts.Harness != "" && !containsFoldSubstring(req.Harness, opts.Harness) {
 		return false
 	}
 	if needle := strings.ToLower(strings.TrimSpace(opts.Query)); needle != "" {
@@ -745,9 +745,13 @@ func matchesRequestFilters(req RequestSummary, opts ListOptions) bool {
 	return true
 }
 
-func containsFold(values []string, needle string) bool {
+func containsFoldSubstring(value, substr string) bool {
+	return strings.Contains(strings.ToLower(value), strings.ToLower(substr))
+}
+
+func anyContainsFoldSubstring(values []string, substr string) bool {
 	for _, value := range values {
-		if strings.EqualFold(value, needle) {
+		if containsFoldSubstring(value, substr) {
 			return true
 		}
 	}

@@ -62,7 +62,11 @@ func TestListRequestFilters(t *testing.T) {
 		{"tool calls", store.ListOptions{HasToolCalls: boolPtr(true)}, 1},
 		{"unassigned", store.ListOptions{Unassigned: boolPtr(true)}, 1},
 		{"provider", store.ListOptions{Provider: "openrouter"}, 2},
+		{"provider partial", store.ListOptions{Provider: "open"}, 2},
+		{"provider case", store.ListOptions{Provider: "OPENROUTER"}, 2},
 		{"model", store.ListOptions{Model: "model-b"}, 1},
+		{"model partial", store.ListOptions{Model: "model-"}, 3},
+		{"model suffix", store.ListOptions{Model: "l-b"}, 1},
 		{"query model", store.ListOptions{Query: "model-a"}, 1},
 		{"query path", store.ListOptions{Query: "/deepseek/"}, 1},
 		{"query session", store.ListOptions{Query: "alpha"}, 1},
@@ -109,7 +113,11 @@ func TestListSessionFilters(t *testing.T) {
 	}{
 		{"all", store.ListOptions{}, 2},
 		{"provider", store.ListOptions{Provider: "openrouter"}, 1},
+		{"provider partial", store.ListOptions{Provider: "open"}, 1},
+		{"provider case", store.ListOptions{Provider: "DEEP"}, 1},
 		{"model", store.ListOptions{Model: "model-b"}, 1},
+		{"model partial", store.ListOptions{Model: "model-"}, 2},
+		{"model suffix", store.ListOptions{Model: "l-b"}, 1},
 		{"query", store.ListOptions{Query: "alph"}, 1},
 	}
 	for _, tc := range cases {
@@ -256,12 +264,24 @@ func TestFacetsAndHarnessFilter(t *testing.T) {
 		t.Fatalf("unexpected harnesses: %#v", facets.Harnesses)
 	}
 
-	requests, total, err := st.ListAllRequestsFiltered(ctx, store.ListOptions{Harness: "pi", Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if total != 1 || len(requests) != 1 || requests[0].Provider != "openrouter" {
-		t.Fatalf("unexpected harness filter result: %#v", requests)
+	for _, tc := range []struct {
+		name    string
+		harness string
+		want    string
+	}{
+		{"exact", "pi", "openrouter"},
+		{"partial", "clau", "deepseek"},
+		{"case", "PI", "openrouter"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests, total, err := st.ListAllRequestsFiltered(ctx, store.ListOptions{Harness: tc.harness, Limit: 10})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if total != 1 || len(requests) != 1 || requests[0].Provider != tc.want {
+				t.Fatalf("unexpected harness filter result: %#v", requests)
+			}
+		})
 	}
 }
 
