@@ -1185,24 +1185,23 @@ th.clickable:hover {
 
 .tool-result-group {
   display: grid;
-  gap: 4px;
+  gap: 8px;
   margin-top: 8px;
 }
 
-.tool-result {
-  border-left: 2px solid #d7dce3;
-  padding-left: 8px;
-}
-
-.tool-result summary {
-  cursor: pointer;
+.tool-result-label {
   color: var(--muted);
   font-size: 12px;
+  font-weight: 700;
 }
 
 .tool-call {
   border-left: 3px solid #f59e0b;
   padding-left: 8px;
+}
+
+.tool-call > summary {
+  cursor: pointer;
 }
 
 .tool-args {

@@ -164,14 +164,19 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
                 {toolCalls.map((call, idx) => {
                   const results = call.id ? node.toolResultsByCallId?.[call.id] ?? [] : [];
                   return (
-                    <div className="tool-call" key={call.id || idx}>
-                      <div className="tool-call-head">
-                        <span className="tool-call-index">#{idx + 1}</span>
-                        <span className="tool-call-name">{call.name || "(unnamed tool)"}</span>
-                      </div>
-                      {call.arguments !== undefined && <ToolArguments value={call.arguments} />}
+                    <LazyDetails
+                      className="tool-call"
+                      key={call.id || idx}
+                      summary={
+                        <span className="tool-call-head">
+                          <span className="tool-call-index">#{idx + 1}</span>
+                          <span className="tool-call-name">{call.name || "(unnamed tool)"}</span>
+                        </span>
+                      }
+                    >
+                      {call.arguments !== undefined && <ToolArguments value={call.arguments} full />}
                       {results.length > 0 && <ToolResults results={results} />}
-                    </div>
+                    </LazyDetails>
                   );
                 })}
               </div>
@@ -204,8 +209,8 @@ type LazyDetailsProps = {
 };
 
 // LazyDetails keeps closed content out of the React tree. Conversation pages
-// can contain hundreds of reasoning/tool-result blocks, and rendering hidden
-// Markdown is expensive.
+// can contain hundreds of reasoning, tool-call and tool-result blocks, and
+// rendering hidden content is expensive.
 function LazyDetails({ className, summary, children }: LazyDetailsProps) {
   const [open, setOpen] = useState(false);
   return (
@@ -225,13 +230,14 @@ function ToolResults({ results }: { results: ConversationNode[] }) {
   return (
     <div className="tool-result-group">
       {results.map((result) => (
-        <LazyDetails className="tool-result" key={result.id} summary="Result">
+        <div className="tool-result" key={result.id}>
+          <div className="tool-result-label">Result</div>
           {result.content ? (
-            <CollapsibleText text={result.content} maxLines={40} maxChars={8000} />
+            <pre className="tool-result-content">{result.content}</pre>
           ) : (
             <div className="muted small">(empty result)</div>
           )}
-        </LazyDetails>
+        </div>
       ))}
     </div>
   );
@@ -255,11 +261,12 @@ function formatToolArguments(value: unknown): string | undefined {
   return prettyJSON(parsed);
 }
 
-function ToolArguments({ value }: { value: unknown }) {
+function ToolArguments({ value, full = false }: { value: unknown; full?: boolean }) {
   if (value === undefined || value === null || value === "") return null;
   const parsed = parseToolArguments(value);
   if (typeof parsed === "string") {
-    return parsed ? <CollapsibleText text={parsed} maxLines={20} maxChars={4000} /> : null;
+    if (!parsed) return null;
+    return full ? <pre>{parsed}</pre> : <CollapsibleText text={parsed} maxLines={20} maxChars={4000} />;
   }
   if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
     const entries = Object.entries(parsed as Record<string, unknown>);
@@ -270,7 +277,11 @@ function ToolArguments({ value }: { value: unknown }) {
             <div className="tool-arg" key={key}>
               <span className="tool-arg-key">{key}</span>
               {typeof field === "string" ? (
-                <CollapsibleText text={field} maxLines={20} maxChars={4000} />
+                full ? (
+                  <pre>{field}</pre>
+                ) : (
+                  <CollapsibleText text={field} maxLines={20} maxChars={4000} />
+                )
               ) : (
                 <pre>{JSON.stringify(field) ?? String(field)}</pre>
               )}
@@ -280,7 +291,8 @@ function ToolArguments({ value }: { value: unknown }) {
       );
     }
   }
-  return <CollapsibleText text={formatToolArguments(value) ?? ""} maxLines={20} maxChars={4000} />;
+  const text = formatToolArguments(value) ?? "";
+  return full ? <pre>{text}</pre> : <CollapsibleText text={text} maxLines={20} maxChars={4000} />;
 }
 
 function parseToolCalls(value: unknown): ToolCallView[] {
