@@ -1204,6 +1204,30 @@ th.clickable:hover {
   cursor: pointer;
 }
 
+.tool-call-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.tool-call-raw {
+  position: relative;
+  margin-top: 4px;
+}
+
+.tool-call-raw > .copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+.tool-call-raw pre {
+  max-height: 40vh;
+  overflow: auto;
+  padding-right: 72px;
+}
+
 .tool-args {
   display: grid;
   gap: 6px;

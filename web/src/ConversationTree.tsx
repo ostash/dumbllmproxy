@@ -5,6 +5,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { ConversationNode } from "./types";
 import { prettyJSON } from "./format";
 import { CollapsibleText } from "./CollapsibleText";
+import { CopyButton } from "./CopyButton";
 import { MessageText } from "./MessageText";
 
 type Props = {
@@ -141,7 +142,7 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
             {node.name && <div className="muted small">name: {node.name}</div>}
             {node.tool_call_id && <div className="muted small">tool_call_id: {node.tool_call_id}</div>}
 
-            {node.content ? (
+            {node.content && (
               <MessageText
                 text={node.content}
                 maxLines={20}
@@ -149,8 +150,6 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
                 className="message-content"
                 defaultFormatted={node.role === "assistant"}
               />
-            ) : (
-              <div className="muted small">(no text content)</div>
             )}
 
             {node.reasoning && (
@@ -163,21 +162,7 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
               <div className="tool-calls">
                 {toolCalls.map((call, idx) => {
                   const results = call.id ? node.toolResultsByCallId?.[call.id] ?? [] : [];
-                  return (
-                    <LazyDetails
-                      className="tool-call"
-                      key={call.id || idx}
-                      summary={
-                        <span className="tool-call-head">
-                          <span className="tool-call-index">#{idx + 1}</span>
-                          <span className="tool-call-name">{call.name || "(unnamed tool)"}</span>
-                        </span>
-                      }
-                    >
-                      {call.arguments !== undefined && <ToolArguments value={call.arguments} full />}
-                      {results.length > 0 && <ToolResults results={results} />}
-                    </LazyDetails>
-                  );
+                  return <ToolCall key={call.id || idx} call={call} index={idx} results={results} />;
                 })}
               </div>
             )}
@@ -226,6 +211,46 @@ function LazyDetails({ className, summary, children }: LazyDetailsProps) {
   );
 }
 
+function ToolCall({ call, index, results }: { call: ToolCallView; index: number; results: ConversationNode[] }) {
+  const [raw, setRaw] = useState(false);
+  const rawJSON = useMemo(() => (raw ? formatToolCallJSON(call, results) : ""), [raw, call, results]);
+  return (
+    <LazyDetails
+      className="tool-call"
+      summary={
+        <span className="tool-call-head">
+          <span className="tool-call-index">#{index + 1}</span>
+          <span className="tool-call-name">{call.name || "(unnamed tool)"}</span>
+        </span>
+      }
+    >
+      <div className="tool-call-toolbar">
+        <button
+          type="button"
+          className="link-button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setRaw((v) => !v);
+          }}
+        >
+          {raw ? "show formatted" : "show raw"}
+        </button>
+      </div>
+      {raw ? (
+        <div className="tool-call-raw">
+          <CopyButton text={rawJSON} />
+          <pre>{rawJSON}</pre>
+        </div>
+      ) : (
+        <>
+          {call.arguments !== undefined && <ToolArguments value={call.arguments} full />}
+          {results.length > 0 && <ToolResults results={results} />}
+        </>
+      )}
+    </LazyDetails>
+  );
+}
+
 function ToolResults({ results }: { results: ConversationNode[] }) {
   return (
     <div className="tool-result-group">
@@ -243,7 +268,7 @@ function ToolResults({ results }: { results: ConversationNode[] }) {
   );
 }
 
-type ToolCallView = { id?: string; name?: string; arguments?: unknown };
+type ToolCallView = { id?: string; type?: string; name?: string; arguments?: unknown };
 
 function parseToolArguments(value: unknown): unknown {
   if (typeof value !== "string") return value;
@@ -259,6 +284,34 @@ function formatToolArguments(value: unknown): string | undefined {
   const parsed = parseToolArguments(value);
   if (typeof parsed === "string") return parsed;
   return prettyJSON(parsed);
+}
+
+function formatToolCallJSON(call: ToolCallView, results: ConversationNode[]): string {
+  const payload: Record<string, unknown> = {};
+  if (call.id !== undefined) payload.id = call.id;
+  if (call.type !== undefined) payload.type = call.type;
+  if (call.name !== undefined) payload.name = call.name;
+  if (call.arguments !== undefined) payload.arguments = parseToolArguments(call.arguments);
+  if (results.length > 0) {
+    payload.results = results.map((result) => ({
+      tool_call_id: result.tool_call_id,
+      name: result.name,
+      content: parseMaybeJSON(result.content ?? "")
+    }));
+  }
+  return JSON.stringify(payload, null, 2);
+}
+
+function parseMaybeJSON(value: string): unknown {
+  const trimmed = value.trim();
+  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+    return value;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
 }
 
 function ToolArguments({ value, full = false }: { value: unknown; full?: boolean }) {
@@ -304,6 +357,7 @@ function parseToolCalls(value: unknown): ToolCallView[] {
       const fn = (obj.function ?? {}) as Record<string, unknown>;
       return {
         id: typeof obj.id === "string" ? obj.id : undefined,
+        type: typeof obj.type === "string" ? obj.type : undefined,
         name: typeof fn.name === "string" ? fn.name : undefined,
         arguments: fn.arguments
       };
