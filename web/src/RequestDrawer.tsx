@@ -224,7 +224,6 @@ function HTTPTab({ detail }: { detail: RequestDetail }) {
       <section>
         <h3>Extracted headers</h3>
         <JSONView value={detail.metadata_json} />
-        <p className="muted small">Full headers are not stored. Only configured session and metadata headers are extracted.</p>
       </section>
     </>
   );

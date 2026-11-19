@@ -110,6 +110,7 @@ export function RequestInspector({
     Boolean(detail.usage_json) ||
     Boolean(detail.cost_details_json) ||
     Boolean(detail.pricing_snapshot_json);
+  const note = inspectorNote(paneMode, detail);
 
   return (
     <main className="page inspector-page">
@@ -195,9 +196,7 @@ export function RequestInspector({
         </div>
       )}
 
-      <div className="inspector-note">
-        {inspectorNote(paneMode, detail)}
-      </div>
+      {note && <div className="inspector-note">{note}</div>}
 
       <div className="inspector-grid">
         <section className="pane">
@@ -271,7 +270,6 @@ export function RequestInspector({
             <section>
               <h3>Extracted headers</h3>
               <JSONView value={detail.metadata_json} />
-              <p className="muted small">Full headers are not stored. Only configured session and metadata headers are extracted.</p>
             </section>
 
             <section>
@@ -346,12 +344,9 @@ export function RequestInspector({
   );
 }
 
-function inspectorNote(paneMode: PaneMode, detail: RequestDetail): string {
+function inspectorNote(paneMode: PaneMode, detail: RequestDetail): string | null {
   if (paneMode === "conversation") {
-    const base = "Conversation reconstructed from this request body and final response.";
-    return detail.streamed && detail.parser === "openai_chat"
-      ? `${base} Streaming responses use the reconstructed final JSON.`
-      : base;
+    return null;
   }
   if (!detail.streamed) {
     return "Payload from this request and response. Chat completions are pretty-printed; other formats are shown raw.";
