@@ -13,13 +13,14 @@ type Props = {
   maxChars: number;
   className?: string;
   defaultFormatted?: boolean;
+  full?: boolean;
 };
 
-export function MessageText({ text, maxLines, maxChars, className, defaultFormatted = false }: Props) {
+export function MessageText({ text, maxLines, maxChars, className, defaultFormatted = false, full = false }: Props) {
   const [formatted, setFormatted] = useState(defaultFormatted);
   const [expanded, setExpanded] = useState(false);
   const lines = text.split("\n");
-  const long = lines.length > maxLines || text.length > maxChars;
+  const long = !full && (lines.length > maxLines || text.length > maxChars);
 
   return (
     <div className="message-text">
@@ -69,6 +70,8 @@ export function MessageText({ text, maxLines, maxChars, className, defaultFormat
             </button>
           )}
         </>
+      ) : full ? (
+        <pre className={className}>{text}</pre>
       ) : (
         <CollapsibleText text={text} maxLines={maxLines} maxChars={maxChars} className={className} />
       )}

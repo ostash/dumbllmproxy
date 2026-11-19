@@ -155,7 +155,7 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
 
             {node.reasoning && (
               <LazyDetails className="reasoning" summary="Reasoning">
-                <MessageText text={node.reasoning} maxLines={40} maxChars={8000} defaultFormatted />
+                <MessageText text={node.reasoning} maxLines={40} maxChars={8000} defaultFormatted full />
               </LazyDetails>
             )}
 
