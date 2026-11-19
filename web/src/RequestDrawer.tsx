@@ -13,6 +13,7 @@ import {
   statusClass
 } from "./format";
 import { JSONView } from "./JSONView";
+import { ExtractedHeaders } from "./ExtractedHeaders";
 import { PayloadView } from "./PayloadView";
 
 type Props = {
@@ -223,7 +224,7 @@ function HTTPTab({ detail }: { detail: RequestDetail }) {
       </section>
       <section>
         <h3>Extracted headers</h3>
-        <JSONView value={detail.metadata_json} />
+        <ExtractedHeaders value={detail.metadata_json} />
       </section>
     </>
   );

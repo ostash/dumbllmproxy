@@ -7,6 +7,7 @@ import type { RequestDetail } from "./types";
 import { ConversationTree } from "./ConversationTree";
 import { PayloadView } from "./PayloadView";
 import { JSONView } from "./JSONView";
+import { ExtractedHeaders } from "./ExtractedHeaders";
 import { formatCost, formatDuration, formatTimestamp, formatTokens, statusClass } from "./format";
 import { TokenBreakdown } from "./TokenBreakdown";
 
@@ -269,7 +270,7 @@ export function RequestInspector({
 
             <section>
               <h3>Extracted headers</h3>
-              <JSONView value={detail.metadata_json} />
+              <ExtractedHeaders value={detail.metadata_json} />
             </section>
 
             <section>
