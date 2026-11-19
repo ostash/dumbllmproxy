@@ -60,6 +60,7 @@ type RowProps = {
 function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestIds, onSelect, onOpenRequest }: RowProps) {
   const [bodyExpanded, setBodyExpanded] = useState(node.role !== "tool");
   const [childrenExpanded, setChildrenExpanded] = useState(true);
+  const [contentFormatted, setContentFormatted] = useState(node.role === "assistant");
   const highlighted =
     !selectedNodeId &&
     selectedRequestIds.length > 0 &&
@@ -104,6 +105,18 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
             <span className="tree-toggle-placeholder" />
           )}
           <span className={`role role-${node.role}`}>{node.role}</span>
+          {node.content && (
+            <button
+              type="button"
+              className="link-button format-toggle"
+              onClick={(e) => {
+                e.stopPropagation();
+                setContentFormatted((v) => !v);
+              }}
+            >
+              {contentFormatted ? "show raw" : "show formatted"}
+            </button>
+          )}
           {onOpenRequest ? (
             <button
               className="request-link"
@@ -148,15 +161,13 @@ function NodeRow({ node, depth, toolCallsById, selectedNodeId, selectedRequestId
                 maxLines={20}
                 maxChars={4000}
                 className="message-content"
-                defaultFormatted={node.role === "assistant"}
+                formatted={contentFormatted}
+                onToggleFormatted={() => setContentFormatted((v) => !v)}
+                showToolbar={false}
               />
             )}
 
-            {node.reasoning && (
-              <LazyDetails className="reasoning" summary="Reasoning">
-                <MessageText text={node.reasoning} maxLines={40} maxChars={8000} defaultFormatted full />
-              </LazyDetails>
-            )}
+            {node.reasoning && <Reasoning text={node.reasoning} />}
 
             {toolCalls.length > 0 && (
               <div className="tool-calls">
@@ -211,6 +222,41 @@ function LazyDetails({ className, summary, children }: LazyDetailsProps) {
   );
 }
 
+function Reasoning({ text }: { text: string }) {
+  const [formatted, setFormatted] = useState(true);
+  return (
+    <LazyDetails
+      className="reasoning"
+      summary={
+        <span className="reasoning-head">
+          <span>Reasoning</span>
+          <button
+            type="button"
+            className="link-button format-toggle"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setFormatted((v) => !v);
+            }}
+          >
+            {formatted ? "show raw" : "show formatted"}
+          </button>
+        </span>
+      }
+    >
+      <MessageText
+        text={text}
+        maxLines={40}
+        maxChars={8000}
+        formatted={formatted}
+        onToggleFormatted={() => setFormatted((v) => !v)}
+        showToolbar={false}
+        full
+      />
+    </LazyDetails>
+  );
+}
+
 function ToolCall({ call, index, results }: { call: ToolCallView; index: number; results: ConversationNode[] }) {
   const [raw, setRaw] = useState(false);
   const rawJSON = useMemo(() => (raw ? formatToolCallJSON(call, results) : ""), [raw, call, results]);
@@ -221,21 +267,20 @@ function ToolCall({ call, index, results }: { call: ToolCallView; index: number;
         <span className="tool-call-head">
           <span className="tool-call-index">#{index + 1}</span>
           <span className="tool-call-name">{call.name || "(unnamed tool)"}</span>
+          <button
+            type="button"
+            className="link-button format-toggle"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setRaw((v) => !v);
+            }}
+          >
+            {raw ? "show formatted" : "show raw"}
+          </button>
         </span>
       }
     >
-      <div className="tool-call-toolbar">
-        <button
-          type="button"
-          className="link-button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setRaw((v) => !v);
-          }}
-        >
-          {raw ? "show formatted" : "show raw"}
-        </button>
-      </div>
       {raw ? (
         <div className="tool-call-raw">
           <CopyButton text={rawJSON} />

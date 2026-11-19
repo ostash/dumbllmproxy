@@ -13,28 +13,45 @@ type Props = {
   maxChars: number;
   className?: string;
   defaultFormatted?: boolean;
+  formatted?: boolean;
+  onToggleFormatted?: () => void;
+  showToolbar?: boolean;
   full?: boolean;
 };
 
-export function MessageText({ text, maxLines, maxChars, className, defaultFormatted = false, full = false }: Props) {
-  const [formatted, setFormatted] = useState(defaultFormatted);
+export function MessageText({
+  text,
+  maxLines,
+  maxChars,
+  className,
+  defaultFormatted = false,
+  formatted: controlledFormatted,
+  onToggleFormatted,
+  showToolbar = true,
+  full = false
+}: Props) {
+  const [internalFormatted, setInternalFormatted] = useState(defaultFormatted);
   const [expanded, setExpanded] = useState(false);
+  const formatted = controlledFormatted ?? internalFormatted;
+  const toggleFormatted = onToggleFormatted ?? (() => setInternalFormatted((v) => !v));
   const lines = text.split("\n");
   const long = !full && (lines.length > maxLines || text.length > maxChars);
 
   return (
     <div className="message-text">
-      <div className="message-text-toolbar">
-        <button
-          className="link-button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setFormatted((v) => !v);
-          }}
-        >
-          {formatted ? "show raw" : "show formatted"}
-        </button>
-      </div>
+      {showToolbar && (
+        <div className="message-text-toolbar">
+          <button
+            className="link-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFormatted();
+            }}
+          >
+            {formatted ? "show raw" : "show formatted"}
+          </button>
+        </div>
+      )}
       {formatted ? (
         <>
           <div className={`markdown${long && !expanded ? " markdown-collapsed" : ""}`}>

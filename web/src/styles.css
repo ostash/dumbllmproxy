@@ -975,7 +975,8 @@ th.clickable:hover {
   margin: 1px 0 3px;
 }
 
-.message-text-toolbar .link-button {
+.message-text-toolbar .link-button,
+.format-toggle {
   font-size: 11px;
 }
 
@@ -1165,6 +1166,12 @@ th.clickable:hover {
   font-size: 12px;
 }
 
+.reasoning-head {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
 .reasoning pre,
 .tool-call pre,
 .tool-result pre {
@@ -1202,12 +1209,6 @@ th.clickable:hover {
 
 .tool-call > summary {
   cursor: pointer;
-}
-
-.tool-call-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 4px;
 }
 
 .tool-call-raw {
